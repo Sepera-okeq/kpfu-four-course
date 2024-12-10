@@ -2,69 +2,55 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-# Шаг 0: Загрузка и преобразование изображения в градации серого
-image = Image.open('image.png').convert('L')  # Открываем изображение из файла и конвертируем его в оттенки серого ('L' mode)
-image_np = np.array(image, dtype=np.float32)  # Преобразуем изображение в numpy массив с типом данных float32 для точных вычислений
 
-# Отображаем исходное изображение в градациях серого
-plt.imshow(image_np, cmap='gray')  # Отображаем изображение, используя цветовую карту 'gray' для корректного отображения оттенков серого
-plt.title('Исходное изображение в градациях серого')  # Устанавливаем заголовок для графика
-plt.axis('off')  # Отключаем отображение осей для визуальной ясности
-plt.show()  # Отображаем график
+image = Image.open('image.png').convert('L')
+image_np = np.array(image, dtype=np.float32)
+
+plt.imshow(image_np, cmap='gray')
+plt.title('Исходное изображение в градациях серого')
+plt.axis('off')
+plt.show()
 
 # Шаг 1: Гауссово размытие
 
 def gaussian_kernel(size, sigma=1):
     """Создание 2D Гауссовского ядра фильтра."""
-    # Создаем двумерное ядро, используя функцию Гаусса
-    # x и y - индексы элементов ядра
     kernel = np.fromfunction(
-        lambda x, y: (1 / (2 * np.pi * sigma**2)) *  # Нормализующий коэффициент Гауссового распределения
+        lambda x, y: (1 / (2 * np.pi * sigma**2)) *
         np.exp(-((x - (size - 1) / 2)**2 + (y - (size - 1) / 2)**2) / (2 * sigma**2)), (size, size))
-    # Нормализуем ядро, чтобы сумма всех его элементов была равна 1
     return kernel / np.sum(kernel)
 
 def gaussian_blur(image, kernel_size, sigma):
     """Применение свертки изображения с ядром Гаусса."""
-    kernel = gaussian_kernel(kernel_size, sigma)  # Создаем Гауссово ядро с заданным размером и сигмой
-    blurred_image = np.zeros_like(image)  # Инициализируем массив для размытого изображения
-    # Дополняем изображение по краям, чтобы избежать проблем с краевыми пикселями при свертке
+    kernel = gaussian_kernel(kernel_size, sigma)
+    blurred_image = np.zeros_like(image)
     padded_image = np.pad(image, pad_width=((kernel_size//2, kernel_size//2), (kernel_size//2, kernel_size//2)), mode='reflect')
-    # Проходимся по каждому пикселю изображения
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
-            # Извлекаем регион изображения, соответствующий размеру ядра
             region = padded_image[i:i+kernel_size, j:j+kernel_size]
-            # Применяем свертку: умножаем регион на ядро и суммируем
             blurred_image[i, j] = np.sum(region * kernel)
-    # Ограничиваем значения пикселей в диапазоне от 0 до 255
     return np.clip(blurred_image, 0, 255)
 
 def convolve(image, kernel):
     """Общая функция свертки, используемая для различных ядер."""
-    image_height, image_width = image.shape  # Размеры изображения
-    kernel_height, kernel_width = kernel.shape  # Размеры ядра
+    image_height, image_width = image.shape
+    kernel_height, kernel_width = kernel.shape
     
-    pad_height = kernel_height // 2  # Размер паддинга по вертикали
-    pad_width = kernel_width // 2    # Размер паддинга по горизонтали
+    pad_height = kernel_height // 2
+    pad_width = kernel_width // 2
     
-    # Дополняем изображение отражением, чтобы избежать краевых эффектов
     padded_image = np.pad(image, ((pad_height, pad_height), (pad_width, pad_width)), 'reflect')
     
-    output = np.zeros_like(image)  # Инициализируем массив для выхода
+    output = np.zeros_like(image)
     
-    # Применяем свертку по всем пикселям изображения
     for i in range(image_height):
         for j in range(image_width):
-            # Извлекаем текущий регион изображения
             region = padded_image[i:i+kernel_height, j:j+kernel_width]
-            # Вычисляем свертку: умножаем регион на ядро и суммируем
             output[i,j] = np.sum(region * kernel)
     return output
 
-# Параметры для Гауссова размытия
-kernel_size = 5  # Размер ядра (должно быть нечетным). Увеличение этого параметра усилит размытие.
-sigma = 4        # Стандартное отклонение для ядра. Чем больше sigma, тем более "размазанным" будет ядро, усиливая размытие.
+kernel_size = 5
+sigma = 4
 
 # Применяем Гауссово размытие к изображению
 blurred_image = gaussian_blur(image_np, kernel_size, sigma)
