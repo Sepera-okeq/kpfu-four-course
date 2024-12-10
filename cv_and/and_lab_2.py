@@ -22,7 +22,7 @@ image_2_np = np.array(image_2)
 def otsu_binarization(image):
     """Бинаризация методом Оцу."""
     # Убедимся, что изображение преобразовано в numpy массив
-    if isinstance(image, Image.Image):  # Если это объект типа PIL.Image
+    if isinstance(image, Image.Image):
         image = np.array(image)  # Конвертируем в numpy-массив
 
     if len(image.shape) == 3:  # Если изображение цветное (3 канала)

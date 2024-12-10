@@ -119,7 +119,7 @@ def angle_rounding(theta):
 rounded_theta = angle_rounding(theta)
 
 # Шаг 5: Подавление немаксимумов
-
+# Оставить только локальные максимумы вдоль направления градиента, подавив остальные пиксели.
 def non_max_suppression(G, theta):
     """Подавление немаксимумов в направлении градиента."""
     M, N = G.shape  # Размеры изображения
@@ -164,7 +164,7 @@ plt.axis('off')
 plt.show()
 
 # Шаг 6: Пороговая обработка и гистерезис
-
+# Разделить границы на сильные, слабые и несущественные.
 def threshold(nms_image, lowThreshold, highThreshold):
     """Применение двойной пороговой обработки к изображению."""
     M, N = nms_image.shape  # Размеры изображения
@@ -185,6 +185,7 @@ def threshold(nms_image, lowThreshold, highThreshold):
     
     return res
 
+# Оставить только те слабые границы, которые связаны с сильными.
 def hysteresis(img):
     """Применение гистерезиса для соединения границ."""
     M, N = img.shape  # Размеры изображения
