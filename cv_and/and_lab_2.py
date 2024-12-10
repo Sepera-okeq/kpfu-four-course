@@ -1,104 +1,152 @@
-import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 import matplotlib.pyplot as plt
-import os
-
+import os 
 
 def load_image(file_path):
-    """Загрузка изображения с проверкой наличия файла."""
     if not os.path.exists(file_path):
         print(f"Ошибка: Файл '{file_path}' не найден!")
         return None
     return Image.open(file_path)
 
 
-# Загрузка входных изображений
-image_1 = load_image('image1.jpg')  # Укажите ваш путь к файлу
-image_2 = load_image('image2.jpg')  # Укажите ваш путь к файлу
+image_1 = load_image('image1.jpg')
+image_2 = load_image('image2.jpg')
 if image_1 is None or image_2 is None:
     exit(0)
 
-# Преобразование к numpy-массивам
 image_1_np = np.array(image_1)
 image_2_np = np.array(image_2)
 
-
+# Реализация метода Оцу
 def otsu_binarization(image):
-    """Бинаризация метода Оцу."""
-    if len(image.shape) == 3:  # Если изображение цветное
-        gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    """Бинаризация методом Оцу."""
+    # Убедимся, что изображение преобразовано в numpy массив
+    if isinstance(image, Image.Image):  # Если это объект типа PIL.Image
+        image = np.array(image)  # Конвертируем в numpy-массив
+
+    if len(image.shape) == 3:  # Если изображение цветное (3 канала)
+        # Конвертируем в оттенки серого через усреднение по каналам
+        gray_image = np.mean(image, axis=2).astype(np.uint8)
     else:
         gray_image = image  # Если изображение уже в градациях серого
-    
-    blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)  # Уменьшение шумов
-    _, binary = cv2.threshold(blurred_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return binary
+
+    # Рассчитываем гистограмму значений от 0 до 255
+    hist, bins = np.histogram(gray_image.ravel(), bins=256, range=(0, 256))
+
+    # Считаем общее количество пикселей
+    total_pixels = gray_image.size
+
+    # Инициализируем переменные для метода Оцу
+    current_max_variance = 0  # Текущая максимальная межклассовая дисперсия
+    threshold = 0  # Пороговое значение Оцу
+
+    weight_background = 0  # Вес фона (заполнен 0 начального веса)
+    sum_background = 0  # Сумма интенсивностей фона
+    sum_total = np.dot(hist, np.arange(256))  # Полная сумма всех значений интенсивностей
+
+    # Перебираем все возможные значения порогов (0-255)
+    for t in range(256):
+        weight_background += hist[t]  # Увеличиваем вес фона
+        if weight_background == 0:  # Если пикселей нет, пропускаем
+            continue
+
+        weight_foreground = total_pixels - weight_background  # Вес переднего плана
+        if weight_foreground == 0:  # Если пикселей переднего фона нет, пропускаем
+            break
+
+        sum_background += t * hist[t]  # Сумма интенсивностей фона
+        mean_background = sum_background / weight_background  # Средняя интенсивность фона
+        mean_foreground = (sum_total - sum_background) / weight_foreground  # Средняя интенсивность переднего плана
+
+        # Вычисляем межклассовую дисперсию
+        inter_class_variance = (
+            weight_background * weight_foreground * (mean_background - mean_foreground) ** 2
+        )
+
+        # Если нашли большую дисперсию, обновляем параметры
+        if inter_class_variance > current_max_variance:
+            current_max_variance = inter_class_variance
+            threshold = t
+
+    # Применяем порог бинаризации
+    binary_image = gray_image > threshold  # Бинаризация, пиксели больше порога = True
+    binary_image = binary_image.astype(np.uint8) * 255  # Конвертация в 0 и 255 для маски
+    return binary_image  # Возвращаем двоичное изображение
 
 
+# Реализация функции окраски сегментов
 def color_segments(binary_image):
     """Раскрашивает сегменты в случайные цвета."""
-    # Выделение меток (связные компоненты)
-    num_labels, labels = cv2.connectedComponents(binary_image)
-    
+    from scipy.ndimage import label  # Для получения меток (аналог connectedComponents)
+    h, w = binary_image.shape  # Получаем высоту и ширину изображения
+
+    # Генерация меток, каждая связь получает уникальное число
+    structure = np.ones((3, 3), dtype=int)  # Структурный элемент для связей (соседство 8 пикселей)
+    labeled_image, num_labels = label(binary_image, structure=structure)
+
     # Создаем цветное изображение
-    h, w = binary_image.shape
-    colored_image = np.zeros((h, w, 3), dtype=np.uint8)
+    colored_image = np.zeros((h, w, 3), dtype=np.uint8)  # Массив для цветного изображения
+    np.random.seed(42)  # Устанавливаем фиксированный seed для воспроизводимости
+    colors = np.random.randint(0, 255, size=(num_labels + 1, 3))  # Генерируем случайные цвета
 
-    # Назначаем случайные цвета каждому сегменту
-    np.random.seed(42)  # Для воспроизводимости
-    colors = np.random.randint(0, 255, size=(num_labels, 3))
+    # Применяем цвета к каждому сегменту
+    for label_idx in range(1, num_labels + 1):  # Пропускаем фон (метка 0)
+        colored_image[labeled_image == label_idx] = colors[label_idx]  # Закрашиваем сегмент
 
-    # Закрасить каждый сегмент
-    for label in range(1, num_labels):  # Пропускаем фон (метка 0)
-        colored_image[labels == label] = colors[label]
-
-    return colored_image
+    return colored_image  # Возвращаем результат
 
 
+# Функция для создания сегментации на основе гистограммы
 def histogram_and_seed_growth(image):
     """Сегментация через гистограмму и выращивание семян."""
-    if len(image.shape) == 3:  # HSV нужно только для цветных изображений
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-        h, s, v = cv2.split(hsv_image)
+    # Убедимся, что изображение преобразовано в numpy массив
+    if isinstance(image, Image.Image):  # Если это объект типа PIL.Image
+        image = np.array(image)  # Преобразуем в numpy-массив
+
+    if len(image.shape) == 3:  # Проверяем, цветное ли изображение (3-канальное)
+        # Конвертируем в HSV (Hue, Saturation, Value)
+        hsv_image = image  # В данном случае оставляем numpy-массив, если это цветное изображение
+        hsv_np = hsv_image  # Переименование для удобства
+        h, s, v = hsv_np[:, :, 0], hsv_np[:, :, 1], hsv_np[:, :, 2]  # Разделяем каналы H, S, V
     else:
         print("Ожидалось цветное изображение для гистограммного подхода.")
-        return None
+        return None  # Если изображение не цветное, возвращаем None
 
-    # Находим диапазон по гистограмме насыщенности (saturation)
-    hist = cv2.calcHist([s], [0], None, [256], [0, 256])
-    dominant_s = np.argmax(hist)
+    # Строим гистограмму для значения насыщенности (saturation)
+    hist, bins = np.histogram(s.ravel(), bins=256, range=(0, 256))
+    dominant_s = np.argmax(hist)  # Находим доминирующее значение насыщенности
 
-    lower_bound = np.array([0, max(0, dominant_s - 40), 50])  # Границы "доминирующего" цвета
-    upper_bound = np.array([180, min(255, dominant_s + 40), 255])
-    mask = cv2.inRange(hsv_image, lower_bound, upper_bound)
+    # Определяем границы диапазона для выделения объектов
+    lower_bound = np.maximum(0, dominant_s - 15)  # Нижняя граница
+    upper_bound = np.minimum(255, dominant_s + 15)  # Верхняя граница
+    mask = (s >= lower_bound) & (s <= upper_bound)  # Создаем маску по диапазону насыщенности
 
-    # Далее разметка семян
-    num_labels, labels = cv2.connectedComponents(mask)
+    h, w = mask.shape  # Определяем размеры маски изображения
+    colored_image = np.zeros((h, w, 3), dtype=np.uint8)  # Подготавливаем цветное изображение
 
-    # Создаем цветное изображение для сегментов
-    h, w = mask.shape
-    colored_image = np.zeros((h, w, 3), dtype=np.uint8)
-    np.random.seed(42)
-    colors = np.random.randint(0, 255, (num_labels, 3))
-    for label in range(1, num_labels):  # Пропускаем фон
-        colored_image[labels == label] = colors[label]
+    # Генерация цвета сегментов (аналог `connectedComponents`)
+    from scipy.ndimage import label  # Для меток связных областей
+    labeled_mask, num_labels = label(mask)  # Метки для сегментированных объектов
 
-    return colored_image
+    np.random.seed(42)  # Seed для воспроизводимости
+    colors = np.random.randint(0, 255, size=(num_labels + 1, 3))  # Генерация цветов объектов
+    for label_idx in range(1, num_labels + 1):  # Раскрашивание сегментов
+        colored_image[labeled_mask == label_idx] = colors[label_idx]
 
-# Запускаем сегментацию для каждого изображения
+    return colored_image  # Возвращаем цветное изображение
 
-# Для изображения 1
-binary_1 = otsu_binarization(image_1_np)
-colored_segments_1a = color_segments(binary_1)
-colored_segments_1b = histogram_and_seed_growth(image_1_np)
+
+
+binary_1 = otsu_binarization(image_1)  # Бинаризация методом Оцу
+colored_segments_1a = color_segments(binary_1)  # Раскраска сегментов
+colored_segments_1b = histogram_and_seed_growth(image_1)  # Гистограммы + раскраска
 
 # Для изображения 2
-binary_2 = otsu_binarization(image_2_np)
-colored_segments_2a = color_segments(binary_2)
-colored_segments_2b = histogram_and_seed_growth(image_2_np)
+binary_2 = otsu_binarization(image_2)  # Бинаризация методом Оцу
+colored_segments_2a = color_segments(binary_2)  # Раскраска сегментов
+colored_segments_2b = histogram_and_seed_growth(image_2)  # Гистограммы + раскраска
 
-# Визуализация результатов
 plt.figure(figsize=(12, 12))
 
 # Результаты для первого изображения

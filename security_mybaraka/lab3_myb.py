@@ -109,6 +109,11 @@ class CryptoApp(QMainWindow):
         layout.addWidget(QLabel("Двоичное представление текста"))
         layout.addWidget(self.xor_output_binary)
 
+        self.xor_gamma = QLineEdit()
+        self.xor_gamma.setReadOnly(True)
+        layout.addWidget(QLabel("Гамма"))
+        layout.addWidget(self.xor_gamma)
+
         self.encrypted_output = QTextEdit()
         self.encrypted_output.setReadOnly(True)
         layout.addWidget(QLabel("Зашифрованный текст"))
@@ -131,6 +136,7 @@ class CryptoApp(QMainWindow):
         tab.setLayout(layout)
         self.tabs.addTab(tab, "XOR")
 
+
     def encrypt_xor(self):
         """Шифрование XOR"""
         text = self.xor_input.text()
@@ -145,16 +151,13 @@ class CryptoApp(QMainWindow):
         binary_key = string_to_binary(key_text)  # Преобразуем ключ в двоичный
         self.xor_key_binary.setText(binary_key)  # Отобразить двоичный ключ
 
-        #if len(binary_key) < len(binary_text):
-        #    QMessageBox.warning(self, "Ошибка", "Ключ слишком короткий.")
-        #    return
-
         encrypted_binary = ''.join(
             str(int(b1) ^ int(b2))
             for b1, b2 in zip(binary_text, binary_key[:len(binary_text)])
         )
         self.xor_output_binary.setText(binary_text)
         self.encrypted_output.setText(encrypted_binary)
+        self.xor_gamma.setText(binary_key[:len(binary_text)])
 
     def decrypt_xor(self):
         """Расшифровка XOR"""
@@ -260,76 +263,116 @@ class CryptoApp(QMainWindow):
         layout.addWidget(self.block_input)
 
         self.block_manual_key = QLineEdit()
-        self.block_manual_key.setPlaceholderText("Введите свой ключ (текстовый)")
-        layout.addWidget(QLabel("Ручной ключ (текстовый)"))
+        self.block_manual_key.setPlaceholderText("Введите текстовый ключ")
+        layout.addWidget(QLabel("Текстовый ключ"))
         layout.addWidget(self.block_manual_key)
 
-        self.block_manual_binary = QTextEdit()
-        self.block_manual_binary.setReadOnly(True)
-        layout.addWidget(QLabel("Двоичное представление ручного ключа"))
-        layout.addWidget(self.block_manual_binary)
-
-        self.block_generated_key = QTextEdit()
-        self.block_generated_key.setReadOnly(True)
-        layout.addWidget(QLabel("Сгенерированный ключ (двоичный)"))
-        layout.addWidget(self.block_generated_key)
+        self.block_iv_label = QTextEdit()
+        self.block_iv_label.setReadOnly(True)
+        layout.addWidget(QLabel("Сгенерированный вектор инициализации"))
+        layout.addWidget(self.block_iv_label)
 
         self.block_output_binary = QTextEdit()
         self.block_output_binary.setReadOnly(True)
-        layout.addWidget(QLabel("Результат цепления блоков"))
+        layout.addWidget(QLabel("Зашифрованный текст (двоичный)"))
         layout.addWidget(self.block_output_binary)
 
+        self.block_decrypted_text = QTextEdit()
+        self.block_decrypted_text.setReadOnly(True)
+        layout.addWidget(QLabel("Расшифрованный текст"))
+        layout.addWidget(self.block_decrypted_text)
+
         self.chain_buttons = QHBoxLayout()
-        block_generate_key_button = QPushButton("Сгенерировать ключ")
-        block_generate_key_button.clicked.connect(self.generate_block_key)
+        block_generate_iv_button = QPushButton("Сгенерировать IV2")
+        block_generate_iv_button.clicked.connect(self.generate_short_block_iv)
         block_encrypt_button = QPushButton("Шифровать")
         block_encrypt_button.clicked.connect(self.encrypt_block_chain)
-        self.chain_buttons.addWidget(block_generate_key_button)
+        block_decrypt_button = QPushButton("Расшифровать")
+        block_decrypt_button.clicked.connect(self.decrypt_block_chain)
+
+        self.chain_buttons.addWidget(block_generate_iv_button)
         self.chain_buttons.addWidget(block_encrypt_button)
+        self.chain_buttons.addWidget(block_decrypt_button)
         layout.addLayout(self.chain_buttons)
 
         tab.setLayout(layout)
         self.tabs.addTab(tab, "Сцепление блоков")
 
-    def generate_block_key(self):
-        """Генерация двоичного ключа для цепления блоков"""
-        text = self.block_input.text()
-        if not self.validate_text(text):
-            return
-        binary_length = len(string_to_binary(text))
-        self.generated_key = generate_random_binary(binary_length)
-        self.block_generated_key.setText(self.generated_key)
+    def generate_short_block_iv(self):
+        """Генерация 16-битного вектора инициализации (IV2)"""
+        self.iv = generate_random_binary(16)  # Генерируем строго 16 бит
+        self.block_iv_label.setText(self.iv)
 
     def encrypt_block_chain(self):
-        """Шифрование с цеплением блоков"""
+        """Шифрование сцеплением блоков)"""
         text = self.block_input.text()
         if not self.validate_text(text):
             return
+
         binary_text = string_to_binary(text)
 
+        # Проверяем наличие IV2 (вектора инициализации)
+        if not hasattr(self, 'iv') or len(self.iv) != 16:
+            QMessageBox.warning(self, "Ошибка", "Сначала сгенерируйте IV2.")
+            return
+
+        # Проверяем наличие текстового ключа и преобразуем его в двоичный
         manual_key = self.block_manual_key.text()
         if not manual_key:
-            QMessageBox.warning(self, "Ошибка", "Введите свой ключ (текстовый).")
+            QMessageBox.warning(self, "Ошибка", "Введите текстовый ключ.")
             return
         binary_manual_key = string_to_binary(manual_key)
-        self.block_manual_binary.setText(binary_manual_key)  # Отобразить двоичный ключ
 
-        generated_key = self.generated_key
-        if not generated_key:
-            QMessageBox.warning(self, "Ошибка", "Сгенерируйте ключ.")
-            return
+        # Повторяем текстовый ключ, если он короче текста
+        binary_manual_key = (binary_manual_key * (len(binary_text) // len(binary_manual_key) + 1))[:len(binary_text)]
 
-        #if len(binary_manual_key) < len(binary_text):
-        #    QMessageBox.warning(self, "Ошибка", "Ручной ключ слишком короткий.")
-        #    return
-
-        gamma = generated_key[:len(binary_text)]  # Берем начальный гамма-вектор
+        iv = self.iv
         encrypted_result = ""
+        previous_block = iv  # Первый блок шифрования
+
+        # Шифрование через XOR: текст XOR ключ XOR предыдущий блок (первый раз XOR с IV2)
         for i in range(len(binary_text)):
-            encrypted_char = str(int(binary_text[i]) ^ int(gamma[i]) ^ int(binary_manual_key[i]))
-            encrypted_result += encrypted_char
+            current_bit = binary_text[i]
+            encrypted_bit = str(int(current_bit) ^ int(previous_block[i % 16]) ^ int(binary_manual_key[i]))
+            encrypted_result += encrypted_bit
+
+            if (i + 1) % 16 == 0 or i == len(binary_text) - 1:  # Обновляем предыдущий блок каждые 16 бит
+                previous_block = encrypted_result[-16:]  # Последние 16 бит зашифрованного текста
 
         self.block_output_binary.setText(encrypted_result)
+
+
+    def decrypt_block_chain(self):
+        """Расшифровка сцепленных блоков (короткий IV2)"""
+        encrypted_binary = self.block_output_binary.toPlainText()
+        if not encrypted_binary or not hasattr(self, 'iv'):
+            QMessageBox.warning(self, "Ошибка", "Нет зашифрованного текста или вектора инициализации (IV2).")
+            return
+
+        # Проверяем наличие текстового ключа и преобразуем его в двоичный
+        manual_key = self.block_manual_key.text()
+        if not manual_key:
+            QMessageBox.warning(self, "Ошибка", "Введите текстовый ключ.")
+            return
+        binary_manual_key = string_to_binary(manual_key)
+
+        # Повторяем текстовый ключ, если он короче текста
+        binary_manual_key = (binary_manual_key * (len(encrypted_binary) // len(binary_manual_key) + 1))[:len(encrypted_binary)]
+
+        iv = self.iv
+        decrypted_result_binary = ""
+        previous_block = iv  # Первый блок для расшифровки
+
+        # Расшифровка через XOR: шифртекст XOR ключ XOR предыдущий блок
+        for i in range(len(encrypted_binary)):
+            encrypted_bit = encrypted_binary[i]
+            decrypted_bit = str(int(encrypted_bit) ^ int(previous_block[i % 16]) ^ int(binary_manual_key[i]))
+            decrypted_result_binary += decrypted_bit
+
+            if (i + 1) % 16 == 0 or i == len(encrypted_binary) - 1:  # Обновляем предыдущий блок каждые 16 бит
+                previous_block = encrypted_binary[max(0, i - 15):i + 1]  # Последние 16 бит зашифрованного текста
+
+        self.block_decrypted_text.setText(binary_to_string(decrypted_result_binary))  # Перевод обратно в текст
 
 
 if __name__ == "__main__":
