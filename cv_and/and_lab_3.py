@@ -178,7 +178,7 @@ def threshold(nms_image, lowThreshold, highThreshold):
     
     # Определяем значения для сильных и слабых пикселей
     strong = 255  # Сильные пиксели (границы)
-    weak = 65     # Слабые пиксели (потенциальные границы)
+    weak = 100     # Слабые пиксели (потенциальные границы)
     
     # Находим позиции сильных и слабых пикселей на основе пороговых значений
     strong_i, strong_j = np.where(nms_image >= highThreshold / 10)
@@ -195,7 +195,7 @@ def trace_edge(img, i, j, visited):
     """Рекурсивная функция для трассировки границ."""
     M, N = img.shape
     strong = 255
-    weak = 65
+    weak = 100
     
     # Проверяем границы изображения и посещенные пиксели
     if (i < 0 or i >= M or j < 0 or j >= N or visited[i, j]):
