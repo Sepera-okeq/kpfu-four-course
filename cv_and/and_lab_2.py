@@ -177,8 +177,12 @@ def main():
         plt.axis('off')
         plt.show()
 
+        # TODO: Сделать шум соль и перец
+        binary_image = median_filter(binary_image)
+
         # Шаг 4: Выделение сегментов (выращивание семян)
         mask = (binary_image > 0)
+        # TODO: Удалить порог
         similarity_threshold = 30  # Порог похожести для RGB
         labels = seed_growing(denoised_array.astype(np.uint8), mask, similarity_threshold, color_feature_extractor)
         plt.figure(figsize=(6,6))
@@ -209,6 +213,7 @@ def main():
 
         # Шаг 2: Гистограммный метод
         # Строим гистограмму
+        # TODO: Пофиксить гистограмму по части регул. min
         hist, bins = np.histogram(denoised_array2.ravel(), bins=256, range=(0, 256))
         plt.figure(figsize=(6,4))
         plt.title('Гистограмма изображения')
@@ -221,7 +226,7 @@ def main():
         # Здесь мы используем метод Оцу для нахождения оптимального порога
         threshold_otsu = otsu_binarization(denoised_array2)
         threshold_value = np.mean(denoised_array2[threshold_otsu > 0])
-        thresholds = [0, 50, threshold_value, 255]
+        thresholds = [0, threshold_value, 255]
 
         # Создаем маски для каждого диапазона интенсивностей
         masks = []

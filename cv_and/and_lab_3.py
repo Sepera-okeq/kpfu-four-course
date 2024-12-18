@@ -186,6 +186,7 @@ def threshold(nms_image, lowThreshold, highThreshold):
     return res
 
 # Оставить только те слабые границы, которые связаны с сильными.
+# TODO: РЕКРУСИВНООООООО, ИБО ВСЕ СЛАБОЕЕЕЕ
 def hysteresis(img):
     """Применение гистерезиса для соединения границ."""
     M, N = img.shape  # Размеры изображения
