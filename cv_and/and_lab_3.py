@@ -2,6 +2,12 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
+import os
+
+results_dir = 'and_lab_3_results'
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
+
 
 image = Image.open('image.png').convert('L')
 image_np = np.array(image, dtype=np.float32)
@@ -9,7 +15,7 @@ image_np = np.array(image, dtype=np.float32)
 plt.imshow(image_np, cmap='gray')
 plt.title('Исходное изображение в градациях серого')
 plt.axis('off')
-plt.show()
+plt.savefig(f'{results_dir}/result0.png')
 
 # Шаг 1: Гауссово размытие
 
@@ -59,7 +65,7 @@ blurred_image = gaussian_blur(image_np, kernel_size, sigma)
 plt.imshow(blurred_image, cmap='gray')
 plt.title('После Гауссова размытия')
 plt.axis('off')
-plt.show()
+plt.savefig(f'{results_dir}/result1.png')
 
 # Шаг 2: Градиенты Собеля
 
@@ -90,7 +96,7 @@ G, theta = sobel_filters(blurred_image)
 plt.imshow(G, cmap='gray')
 plt.title('Магнитуда градиента после фильтра Собеля')
 plt.axis('off')
-plt.show()
+plt.savefig(f'{results_dir}/result2.png')
 
 # Шаг 3: Направление градиента (уже вычислено в theta)
 
@@ -161,7 +167,7 @@ nms_image = non_max_suppression(G, rounded_theta)
 plt.imshow(nms_image, cmap='gray')
 plt.title('После подавления немаксимумов')
 plt.axis('off')
-plt.show()
+plt.savefig(f'{results_dir}/result5.png')
 
 # Шаг 6: Пороговая обработка и гистерезис
 # Разделить границы на сильные, слабые и несущественные.
@@ -248,8 +254,11 @@ thresholded_image = threshold(nms_image, lowThreshold, highThreshold)
 # Применяем процедуру гистерезиса
 final_image = hysteresis(thresholded_image)
 
+
+
 # Отображаем итоговое изображение с обнаруженными границами
 plt.imshow(final_image, cmap='gray')
 plt.title('Обнаруженные границы (Алгоритм Кэнни)')
 plt.axis('off')
-plt.show()
+plt.savefig(f'{results_dir}/result6.png')
+plt.close()
