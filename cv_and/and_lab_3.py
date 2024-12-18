@@ -50,7 +50,7 @@ def convolve(image, kernel):
     return output
 
 kernel_size = 5
-sigma = 4
+sigma = 2
 
 # Применяем Гауссово размытие к изображению
 blurred_image = gaussian_blur(image_np, kernel_size, sigma)
@@ -129,7 +129,7 @@ def non_max_suppression(G, theta):
     # Проходимся по каждому пикселю изображения, исключая краевые пиксели
     for i in range(1,M-1):
         for j in range(1,N-1):
-            q = 255  # Значения соседних пикселей в направлении градиента
+            q = 128 # Значения соседних пикселей в направлении градиента
             r = 255
             angle_ = angle[i,j]
             
@@ -172,12 +172,12 @@ def threshold(nms_image, lowThreshold, highThreshold):
     
     # Определяем значения для сильных и слабых пикселей
     strong = 255  # Сильные пиксели (границы)
-    weak = 75     # Слабые пиксели (потенциальные границы)
+    weak = 65     # Слабые пиксели (потенциальные границы)
     
     # Находим позиции сильных и слабых пикселей на основе пороговых значений
-    strong_i, strong_j = np.where(nms_image >= highThreshold)
-    zeros_i, zeros_j = np.where(nms_image < lowThreshold)
-    weak_i, weak_j = np.where((nms_image >= lowThreshold) & (nms_image < highThreshold))
+    strong_i, strong_j = np.where(nms_image >= highThreshold / 10)
+    zeros_i, zeros_j = np.where(nms_image < lowThreshold / 10)
+    weak_i, weak_j = np.where((nms_image >= lowThreshold / 10) & (nms_image < highThreshold / 10))
     
     # Присваиваем соответствующие значения пикселям в результирующем изображении
     res[strong_i, strong_j] = strong  # Сильные пиксели
@@ -185,31 +185,63 @@ def threshold(nms_image, lowThreshold, highThreshold):
     
     return res
 
-# Оставить только те слабые границы, которые связаны с сильными.
-# TODO: РЕКРУСИВНООООООО, ИБО ВСЕ СЛАБОЕЕЕЕ
-def hysteresis(img):
-    """Применение гистерезиса для соединения границ."""
-    M, N = img.shape  # Размеры изображения
-    strong = 255      # Значение сильного пикселя
-    weak = 75         # Значение слабого пикселя
+def trace_edge(img, i, j, visited):
+    """Рекурсивная функция для трассировки границ."""
+    M, N = img.shape
+    strong = 255
+    weak = 65
     
-    # Проходимся по каждому пикселю изображения, исключая границы
-    for i in range(1, M-1):
-        for j in range(1, N-1):
-            if img[i,j] == weak:
-                # Если хотя бы один из 8 соседних пикселей является сильным, то пиксель считается границей
-                if ((img[i+1, j-1] == strong) or (img[i+1, j] == strong) or (img[i+1, j+1] == strong)
-                    or (img[i, j-1] == strong) or (img[i, j+1] == strong)
-                    or (img[i-1, j-1] == strong) or (img[i-1, j] == strong) or (img[i-1, j+1] == strong)):
-                    img[i,j] = strong  # Укрепляем слабый пиксель до сильного
-                else:
-                    img[i,j] = 0  # Иначе подавляем пиксель (не считаем его границей)
+    # Проверяем границы изображения и посещенные пиксели
+    if (i < 0 or i >= M or j < 0 or j >= N or visited[i, j]):
+        return
+    
+    # Помечаем текущий пиксель как посещенный
+    visited[i, j] = True
+    
+    # Если текущий пиксель слабый
+    if img[i, j] == weak:
+        # Проверяем 8 соседних пикселей
+        neighbors = [
+            (i-1, j-1), (i-1, j), (i-1, j+1),
+            (i, j-1),             (i, j+1),
+            (i+1, j-1), (i+1, j), (i+1, j+1)
+        ]
+        
+        # Если хотя бы один сосед сильный, усиливаем текущий пиксель
+        for ni, nj in neighbors:
+            if (0 <= ni < M and 0 <= nj < N and img[ni, nj] == strong):
+                img[i, j] = strong
+                # Рекурсивно проверяем соседей текущего пикселя
+                for ni2, nj2 in neighbors:
+                    if (0 <= ni2 < M and 0 <= nj2 < N and not visited[ni2, nj2]):
+                        trace_edge(img, ni2, nj2, visited)
+                break
+        
+        # Если пиксель не был усилен, подавляем его
+        if img[i, j] == weak:
+            img[i, j] = 0
+
+def hysteresis(img):
+    """Применение гистерезиса для соединения границ с использованием рекурсии."""
+    M, N = img.shape
+    strong = 255
+    
+    # Создаем массив для отслеживания посещенных пикселей
+    visited = np.zeros((M, N), dtype=bool)
+    
+    # Находим все сильные пиксели и начинаем с них трассировку
+    strong_points = np.argwhere(img == strong)
+    for i, j in strong_points:
+        if not visited[i, j]:
+            trace_edge(img, i, j, visited)
+    
     return img
 
 # Устанавливаем пороговые значения
-lowThreshold = 10   # Нижний порог. Увеличение этого значения уменьшит количество слабых границ.
-highThreshold = 40  # Верхний порог. Увеличение этого значения уменьшит количество сильных границ, возможно пропуская некоторые важные границы.
-
+# Нижний порог. Увеличение этого значения уменьшит количество слабых границ.
+lowThreshold = 100
+# Верхний порог. Увеличение этого значения уменьшит количество сильных границ, возможно пропуская некоторые важные границы.
+highThreshold = 200 
 # Применяем пороговую обработку
 thresholded_image = threshold(nms_image, lowThreshold, highThreshold)
 

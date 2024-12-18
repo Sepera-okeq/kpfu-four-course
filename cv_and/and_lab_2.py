@@ -31,6 +31,38 @@ def median_filter(image_array, kernel_size=3):
     else:
         raise ValueError("Unsupported image dimensionality")
 
+def remove_salt_and_pepper(image):
+    """Удаляет шум типа соль и перец, анализируя окрестность 3x3"""
+    height, width = image.shape
+    result = np.copy(image)
+    
+    # Добавляем отступы для обработки краев
+    padded = np.pad(image, pad_width=1, mode='edge')
+    
+    # Шаблоны для поиска
+    salt_pattern = np.array([[0, 0, 0],
+                           [0, 1, 0],
+                           [0, 0, 0]])
+    
+    pepper_pattern = np.array([[1, 1, 1],
+                             [1, 0, 1],
+                             [1, 1, 1]])
+    
+    for i in range(1, height + 1):
+        for j in range(1, width + 1):
+            # Получаем окрестность 3x3
+            neighborhood = padded[i-1:i+2, j-1:j+2]
+            
+            # Проверяем на соответствие шаблону "соли"
+            if np.array_equal(neighborhood, salt_pattern):
+                result[i-1, j-1] = 0
+            
+            # Проверяем на соответствие шаблону "перца"
+            elif np.array_equal(neighborhood, pepper_pattern):
+                result[i-1, j-1] = 1
+                    
+    return result
+
 # Реализация алгоритма Otsu
 def otsu_binarization(image):
     """Бинаризация методом Оцу."""
@@ -56,7 +88,7 @@ def otsu_binarization(image):
             current_max_variance = inter_class_variance
             threshold = t
     binary_image = image > threshold
-    return binary_image.astype(np.uint8) * 255
+    return binary_image.astype(np.uint8)  # Returns 0 and 1
 
 # Функция для получения соседей (4-связность)
 def get_neighbors(y, x, height, width):
@@ -133,6 +165,11 @@ def color_segments(labeled_image):
     return colored_image
 
 def main():
+    # Создаем директорию для результатов, если она не существует
+    results_dir = 'and_lab_2_results'
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+
     # Загружаем изображения
     image_paths = ['image1.jpg', 'image2.jpg']
     images = []
@@ -153,12 +190,13 @@ def main():
         print("Алгоритм 1:")
         # Шаг 1: Удаление шума медианным фильтром
         image_array = np.array(image)
-        denoised_array = median_filter(image_array)
-        plt.figure(figsize=(6,6))
-        plt.title('Удаление шума')
-        plt.imshow(denoised_array.astype(np.uint8))
-        plt.axis('off')
-        plt.show()
+        denoised_array = image_array
+        #plt.figure(figsize=(6,6))
+        #plt.title('Удаление шума')
+        #plt.imshow(denoised_array.astype(np.uint8))
+        #plt.axis('off')
+        #plt.savefig(f'{results_dir}/img{idx+1}_alg1_step1_denoised.png')
+        #plt.close()
 
         # Шаг 2: Конвертация в оттенки серого
         gray_image = Image.fromarray(denoised_array.astype(np.uint8)).convert('L')
@@ -167,7 +205,8 @@ def main():
         plt.title('Оттенки серого')
         plt.imshow(gray_array, cmap='gray')
         plt.axis('off')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg1_step2_grayscale.png')
+        plt.close()
 
         # Шаг 3: Бинаризация методом Оцу
         binary_image = otsu_binarization(gray_array)
@@ -175,21 +214,24 @@ def main():
         plt.title('Бинаризация (Оцу)')
         plt.imshow(binary_image, cmap='gray')
         plt.axis('off')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg1_step3_binary.png')
+        plt.close()
 
-        # TODO: Сделать шум соль и перец
-        binary_image = median_filter(binary_image)
+        # Удаляем шум соль и перец
+        binary_image = remove_salt_and_pepper(binary_image)
 
         # Шаг 4: Выделение сегментов (выращивание семян)
-        mask = (binary_image > 0)
-        # TODO: Удалить порог
-        similarity_threshold = 30  # Порог похожести для RGB
+        mask = binary_image > 0
+        # Вычисляем адаптивный порог на основе стандартного отклонения
+        std_dev = np.std(denoised_array)
+        similarity_threshold = std_dev * 0.5  # Используем 50% от стандартного отклонения
         labels = seed_growing(denoised_array.astype(np.uint8), mask, similarity_threshold, color_feature_extractor)
         plt.figure(figsize=(6,6))
         plt.title('Выращивание семян')
         plt.imshow(labels)
         plt.axis('off')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg1_step4_seeds.png')
+        plt.close()
 
         # Шаг 5: Раскраска сегментов
         colored_segments_image = color_segments(labels)
@@ -197,7 +239,8 @@ def main():
         plt.title('Раскраска сегментов')
         plt.imshow(colored_segments_image)
         plt.axis('off')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg1_step5_colored.png')
+        plt.close()
 
         # Алгоритм 2
         print("Алгоритм 2:")
@@ -205,22 +248,33 @@ def main():
         gray_image2 = image.convert('L')
         gray_array2 = np.array(gray_image2)
         denoised_array2 = median_filter(gray_array2)
-        plt.figure(figsize=(6,6))
-        plt.title('Удаление шума')
-        plt.imshow(denoised_array2.astype(np.uint8), cmap='gray')
-        plt.axis('off')
-        plt.show()
+        #plt.figure(figsize=(6,6))
+        #plt.title('Удаление шума')
+        #plt.imshow(denoised_array2.astype(np.uint8), cmap='gray')
+        #plt.axis('off')
+        #plt.savefig(f'{results_dir}/img{idx+1}_alg2_step1_denoised.png')
+        #plt.close()
 
         # Шаг 2: Гистограммный метод
-        # Строим гистограмму
-        # TODO: Пофиксить гистограмму по части регул. min
-        hist, bins = np.histogram(denoised_array2.ravel(), bins=256, range=(0, 256))
+        # Нормализация гистограммы
+        min_val = np.min(denoised_array2)
+        max_val = np.max(denoised_array2)
+        normalized_array = ((denoised_array2 - min_val) * 255 / (max_val - min_val)).astype(np.uint8)
+        
+        hist, bins = np.histogram(normalized_array.ravel(), bins=256, range=(0, 256))
+        # Сглаживание гистограммы
+        hist = np.convolve(hist, np.ones(5)/5, mode='same')
+        
         plt.figure(figsize=(6,4))
-        plt.title('Гистограмма изображения')
+        plt.title('Гистограмма изображения (нормализованная)')
         plt.plot(hist)
         plt.xlabel('Уровень серого')
         plt.ylabel('Частота')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg2_step2_histogram.png')
+        plt.close()
+
+        # Удаляем шум соль и перец
+        denoised_array2 = remove_salt_and_pepper(normalized_array)
 
         # Находим пороговые значения для отделения пиков
         # Здесь мы используем метод Оцу для нахождения оптимального порога
@@ -250,7 +304,8 @@ def main():
         plt.title('Выращивание семян')
         plt.imshow(labels_total)
         plt.axis('off')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg2_step3_seeds.png')
+        plt.close()
 
         # Шаг 4: Раскраска сегментов
         colored_segments_image2 = color_segments(labels_total)
@@ -258,7 +313,8 @@ def main():
         plt.title('Раскраска сегментов')
         plt.imshow(colored_segments_image2)
         plt.axis('off')
-        plt.show()
+        plt.savefig(f'{results_dir}/img{idx+1}_alg2_step4_colored.png')
+        plt.close()
 
 if __name__ == "__main__":
     main()
