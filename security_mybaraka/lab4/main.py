@@ -188,8 +188,8 @@ class ClientDockWidget(QDockWidget):
 
     def show_chat(self):
         self.clear_layout()
-        self.chat_widget = ClientChatWindow(rc4=self.client.rc4, is_server=False, socket=self.client.socket)
-        self.layout.addWidget(self.chat_widget)
+        #self.chat_widget = ClientChatWindow(rc4=self.client.rc4, is_server=False, socket=self.client.socket)
+        #self.layout.addWidget(self.chat_widget)
 
     def register(self):
         login = self.login_input.text()
@@ -217,7 +217,8 @@ class ClientDockWidget(QDockWidget):
         success, message = self.client.authenticate(login, password)
         
         if success:
-            self.show_chat()
+            #self.show_chat()
+            return
         else:
             QMessageBox.warning(self, 'Ошибка', message)
 
