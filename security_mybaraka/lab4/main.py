@@ -1,5 +1,23 @@
+"""
+Главное окно приложения защищенного чата.
+
+Модуль реализует графический интерфейс основного приложения, который включает:
+- Клиентскую часть (регистрация/вход)
+- Серверную часть (обработка подключений)
+- Просмотр логов в реальном времени
+- Просмотр базы данных пользователей
+
+Основные классы:
+- ServerThread: Поток для асинхронной обработки подключений
+- LogViewer: Компонент для просмотра логов
+- DatabaseViewer: Компонент для просмотра БД
+- ClientDockWidget: Виджет клиентской части
+- ServerDockWidget: Виджет серверной части
+- MainWindow: Главное окно приложения
+"""
+
 import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QDockWidget, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QDockWidget,
                             QTextEdit, QVBoxLayout, QWidget, QTableWidget,
                             QTableWidgetItem, QHeaderView, QPushButton,
                             QLabel, QLineEdit, QMessageBox, QHBoxLayout,
