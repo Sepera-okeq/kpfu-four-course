@@ -1,4 +1,4 @@
-from helpers import mod_exp
+from .helpers import mod_exp
 import random
 
 def miller_rabin(n, k=40):

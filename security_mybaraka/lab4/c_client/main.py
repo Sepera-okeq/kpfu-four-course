@@ -1,4 +1,15 @@
 # client/main.py
+"""
+Клиентская часть защищенного чата.
+Реализует функционал регистрации, аутентификации и обмена сообщениями.
+
+Основные компоненты:
+- MessageThread: Поток для асинхронного приема сообщений
+- Client: Основной класс клиента для работы с сетью и криптографией
+- ChatWindow: GUI окно чата
+- MainWindow: GUI окно авторизации/регистрации
+"""
+
 import sys
 import socket
 from datetime import datetime
@@ -9,106 +20,123 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtGui import QColor, QTextCharFormat, QBrush
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
-from RC4 import RC4
-from helpers import generate_odd_64bit, hash_md5, mod_exp, validate_credentials
-from logger import Logger
+
+# Локальные импорты
+from .RC4 import RC4
+from .helpers import generate_odd_64bit, hash_md5, mod_exp, validate_credentials
+from .logger import Logger
+from .RSA import generate_keys
 
 logger = Logger()
 
 class MessageThread(QThread):
-    message_received = pyqtSignal(str, str) # Сигнал для передачи сообщений (зашифрованное, расшифрованное)
-    keys_received = pyqtSignal(int, int)  # Сигнал для передачи открытого ключа RSA (e, n)
+    """
+    Поток для асинхронного приема и обработки сообщений.
+    
+    Сигналы:
+        message_received: Отправляется при получении нового сообщения
+        keys_received: Отправляется при получении RSA ключей
+    """
+    message_received = pyqtSignal(str, str)  # (зашифрованное, расшифрованное)
+    keys_received = pyqtSignal(int, int)     # (e, n)
     
     def __init__(self, client, chat_window):
         super().__init__()
         self.client = client
         self.chat_window = chat_window
         self._running = True
-        # Сигнал получения ключей к обработчику в окне чата
         self.keys_received.connect(self.chat_window.handle_keys_received)
         
     def stop(self):
+        """Остановка потока"""
         self._running = False
         
     def run(self):
-        """Основной метод потока - чтение и обработка входящих сообщений"""
+        """
+        Основной метод потока.
+        Читает входящие сообщения и обрабатывает их в зависимости от типа.
+        """
         try:
-            buffer = ""  # Буфер для накопления входящих данных
+            buffer = ""
             while self._running:
                 try:
-                    # Читаем данные из сокета порциями по 4096 байт
                     part = self.client.socket.recv(4096).decode()
-                    if not part:  # Если это не часть сообщения, не прикрепляем блок
+                    if not part:
                         break
                     buffer += part
                     
-                    # Если получено полное сообщение (заканчивается на \n)
                     if buffer.endswith("\n"):
                         message = buffer.strip()
-                        # Если окно чата существует и инициализирован RC4
                         if self.chat_window and self.chat_window.rc4:
-                            # Расшифровываем сообщение
                             decrypted = self.chat_window.rc4.encrypt(message)
-                            # Если это сообщение с ключами RSA
                             if decrypted.startswith("KEYS|"):
                                 _, e, n = decrypted.split("|")
-                                # Отправляем сигнал с полученными ключами
                                 self.keys_received.emit(int(e), int(n))
-                                logger.info("Получен открытый ключ ClientO: e=%s, n=%s" % (e, n))
+                                logger.info(f"Получен открытый ключ: e={e}, n={n}")
                             else:
-                                # Иначе это обычное сообщение - отправляем сигнал
                                 self.message_received.emit(message, decrypted)
-                        buffer = ""  # Очищаем буфер
+                        buffer = ""
                         
                 except socket.timeout:
-                    continue  # При таймауте продолжаем работу
+                    continue
                     
         except Exception as e:
             logger.error(f"Ошибка в потоке сообщений: {e}")
 
 class Client:
-    """Клиентская часть приложения."""
+    """
+    Основной класс клиента.
+    
+    Отвечает за:
+    - Сетевое взаимодействие
+    - Регистрацию и аутентификацию
+    - Криптографические операции
+    - Управление чатом
+    """
     def __init__(self, host='localhost', port=12345):
         self.host = host
         self.port = port
         self.socket = None
         self.login = ""
         self.password = ""
-        # Поля для криптографии
-        self.A = None
-        self.g = None
-        self.p = None
-        self.b = None
-        self.B = None
-        self.K = None
-
-        self.server_e = None  # Открытый ключ сервера
-        self.server_n = None  # Открытый ключ сервера
-
-        # Поля для чата
-        self.chat_window = None
-        # Поток для приема сообщений
-        self.message_thread = None 
         
-    def handle_message(self, encrypted: str, decrypted: str):
-        if self.chat_window:
-            self.chat_window.message_received.emit(encrypted, decrypted)
+        # Криптографические параметры
+        self.A = None  # Открытый ключ Диффи-Хеллмана
+        self.g = None  # Генератор
+        self.p = None  # Модуль
+        self.b = None  # Закрытый ключ
+        self.B = None  # Открытый ключ
+        self.K = None  # Сеансовый ключ
+        
+        self.server_e = None  # Открытый ключ RSA сервера
+        self.server_n = None  # Модуль RSA сервера
+
+        self.chat_window = None
+        self.message_thread = None
 
     def connect(self):
+        """Установка TCP соединения с сервером"""
         if not self.socket:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.host, self.port))
 
     def register(self, login: str, password: str) -> tuple[bool, str]:
-        """Регистрация нового пользователя."""
+        """
+        Регистрация нового пользователя
+        
+        Args:
+            login: Логин пользователя
+            password: Пароль пользователя
+            
+        Returns:
+            (успех, сообщение)
+        """
         try:
             self.connect()
             
-            # Отправка команды регистрации
             data = f"REGISTER|{login}|{password}"
             self.socket.send(data.encode())
             
-            # Получение ответа
             response = self.socket.recv(1024).decode()
             
             if response == "EXISTS":
@@ -124,63 +152,21 @@ class Client:
         except Exception as e:
             return False, f"Ошибка соединения: {e}"
 
-
-    def exchange_keys(self) -> bool:
-        try:
-
-            # b - 64-битное нечетное число
-            self.b = generate_odd_64bit()
-
-            logger.info(f"Сгенерировано число b: {self.b}")
-            
-            self.socket.settimeout(5.0)
-            
-            data = self.socket.recv(4096).decode()
-
-            # Получаем A, g, p от основного клиента
-            self.A, self.g, self.p = map(int, data.split('|'))
-            
-            logger.info(f"Получены данные от основного клиента:")
-            logger.info(f"A: {self.A}")
-            logger.info(f"g: {self.g}")
-            logger.info(f"p: {self.p}")
-            
-            # Вычисляем B = g^b mod p
-            self.B = mod_exp(self.g, self.b, self.p)
-            logger.info(f"Вычислено B: {self.B}")
-            
-            self.socket.send(str(self.B).encode())
-            logger.info(f"Отправлено B: {self.B}")
-            
-            # Вычисляем сеансовый ключ K = A^b mod p
-            self.K = mod_exp(self.A, self.b, self.p)
-            logger.info(f"Вычислен сеансовый ключ K: {self.K}")
-            
-            self.rc4 = RC4(str(self.K))
-            self.chat_window = ChatWindow(rc4=self.rc4, is_server=False, socket=self.socket)
-            
-            # Create message thread before showing window
-            self.message_thread = MessageThread(self, self.chat_window)
-            self.message_thread.message_received.connect(self.chat_window.display_received_message)
-            self.message_thread.start()
-            
-            self.socket.settimeout(None)
-            
-            self.chat_window.show()
-            return True
-            
-        except Exception as e:
-            logger.error(f"Ошибка обмена ключами: {e}")
-            return False
-            
     def authenticate(self, login: str, password: str) -> tuple[bool, str]:
-        """Аутентификация пользователя."""
+        """
+        Аутентификация пользователя
+        
+        Args:
+            login: Логин пользователя
+            password: Пароль пользователя
+            
+        Returns:
+            (успех, сообщение)
+        """
         try:            
-            # Проверяем соединение перед отправкой
             if not self.socket or self.socket._closed:
                 self.connect()
 
-            # Очищаем буфер сокета
             self.socket.settimeout(0.1)
             try:
                 while True:
@@ -190,27 +176,22 @@ class Client:
             finally:
                 self.socket.settimeout(None)
             
-            # Отправляем команду AUTH
             data = f"AUTH|{login}"
             self.socket.send(data.encode())
             
             response_a = self.socket.recv(1024).decode()
-            logger.info(f"Захешированный sw от основного клиента: {response_a}")
+            logger.info(f"Получен хеш SW: {response_a}")
             
             if response_a == "NOT_FOUND":
-                logger.warning(f"Пользователь {login} не найден")
+                logger.warning(f"Пользователь {login} не найден")
                 return False, "Пользователь не найден"
                 
-            # Получаем хеш SW
             sw_hash = response_a
-
-            # Хеш пароля
             password_hash = hash_md5(password)
-            logger.info(f"Хеш пароля: {password_hash}")
-
-            # Суперхеш = хеш(хеш SW + хеш пароля)
             final_hash = hash_md5(sw_hash + password_hash)
-            logger.info(f"Суперхеш: {final_hash}")
+            
+            logger.info(f"Хеш пароля: {password_hash}")
+            logger.info(f"Финальный хеш: {final_hash}")
             
             self.socket.send(final_hash.encode())
             
@@ -235,35 +216,87 @@ class Client:
         except Exception as e:
             logger.error(f"Ошибка аутентификации: {e}")
             return False, f"Ошибка аутентификации: {e}"
+
+    def exchange_keys(self) -> bool:
+        """
+        Обмен ключами по протоколу Диффи-Хеллмана
+        
+        Returns:
+            bool: Успешность обмена ключами
+        """
+        try:
+            self.b = generate_odd_64bit()
+            logger.info(f"Сгенерировано число b: {self.b}")
+            
+            self.socket.settimeout(5.0)
+            
+            data = self.socket.recv(4096).decode()
+            self.A, self.g, self.p = map(int, data.split('|'))
+            
+            logger.info(f"Получены параметры:")
+            logger.info(f"A: {self.A}")
+            logger.info(f"g: {self.g}")
+            logger.info(f"p: {self.p}")
+            
+            self.B = mod_exp(self.g, self.b, self.p)
+            logger.info(f"Вычислено B: {self.B}")
+            
+            self.socket.send(str(self.B).encode())
+            logger.info(f"Отправлено B: {self.B}")
+            
+            self.K = mod_exp(self.A, self.b, self.p)
+            logger.info(f"Вычислен сеансовый ключ K: {self.K}")
+            
+            self.rc4 = RC4(str(self.K))
+            self.chat_window = ChatWindow(rc4=self.rc4, is_server=False, socket=self.socket)
+            
+            self.message_thread = MessageThread(self, self.chat_window)
+            self.message_thread.message_received.connect(self.chat_window.display_received_message)
+            self.message_thread.start()
+            
+            self.socket.settimeout(None)
+            
+            self.chat_window.show()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка обмена ключами: {e}")
+            return False
     
     def close(self):
-        """Закрытие соединения."""
+        """Закрытие соединения"""
         if self.socket:
             self.socket.close()
             self.socket = None
 
-from PyQt5.QtWidgets import QFileDialog
-
 class ChatWindow(QMainWindow):
-    message_received = pyqtSignal(str, str)  # encrypted, decrypted
+    """
+    Окно чата.
+    
+    Отвечает за:
+    - Отображение и отправку сообщений
+    - Работу с RSA ключами
+    - Подпись и отправку файлов
+    """
+    message_received = pyqtSignal(str, str)
     
     def __init__(self, rc4=None, is_server: bool = False, socket=None):
         super().__init__()
         self.rc4 = rc4 
         self.is_server = is_server
         self.socket = socket
-        self.e = None
-        self.n = None
-        self.d = None
+        self.e = None      # Открытый ключ RSA
+        self.n = None      # Модуль RSA
+        self.d = None      # Закрытый ключ RSA
         self.file_path = None
         self.server_e = None
         self.server_n = None
-        self.key_sent = False  # Флаг отправки ключей
+        self.key_sent = False
         self.init_ui()
         self.sign_button.setEnabled(False)
 
     def update_sign_button_state(self):
-        """Update sign button enabled state based on file and keys presence"""
+        """Обновление состояния кнопки подписи"""
         self.sign_button.setEnabled(
             self.file_path is not None and 
             self.server_e is not None and 
@@ -272,6 +305,7 @@ class ChatWindow(QMainWindow):
         )
 
     def init_ui(self):
+        """Инициализация интерфейса"""
         self.setWindowTitle("Чат (Сервер)" if self.is_server else "Чат (Клиент)")
         self.setGeometry(100, 100, 800, 600)
         
@@ -279,16 +313,14 @@ class ChatWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
         
-        # Область чата
         self.chat_area = QTextEdit()
         self.chat_area.setReadOnly(True)
         layout.addWidget(self.chat_area)
         
-        # Поле ввода и кнопка отправки
         input_layout = QHBoxLayout()
         self.message_input = QTextEdit()
         self.message_input.setMaximumHeight(50)
-        self.message_input.textChanged.connect(self.limit_text_length)  # Валидация на длину строки
+        self.message_input.textChanged.connect(self.limit_text_length)
         input_layout.addWidget(self.message_input)
         
         send_button = QPushButton("Отправить")
@@ -297,20 +329,18 @@ class ChatWindow(QMainWindow):
         
         layout.addLayout(input_layout)
         
-        # Кнопки для генерации и отправки ключей
         rsa_layout = QHBoxLayout()
         generate_button = QPushButton("Сгенерировать")
         generate_button.clicked.connect(self.generate_keys)
         rsa_layout.addWidget(generate_button)
         
         self.send_key_button = QPushButton("Отправить")
-        self.send_key_button.setEnabled(False)  # Отключаем кнопку "Отправить"
+        self.send_key_button.setEnabled(False)
         self.send_key_button.clicked.connect(self.send_keys)
         rsa_layout.addWidget(self.send_key_button)
         
         layout.addLayout(rsa_layout)
         
-        # Кнопки для загрузки и подписи файла
         file_layout = QHBoxLayout()
         load_file_button = QPushButton("Загрузить файл")
         load_file_button.clicked.connect(self.load_file)
@@ -323,11 +353,10 @@ class ChatWindow(QMainWindow):
         
         layout.addLayout(file_layout)
         
-        # Подключаем сигнал получения сообщения
         self.message_received.connect(self.display_received_message)
 
     def limit_text_length(self):
-        """Ограничение длины текста в QTextEdit до 700 символов."""
+        """Ограничение длины сообщения"""
         text = self.message_input.toPlainText()
         if len(text) > 700:
             self.message_input.setPlainText(text[:700])
@@ -336,38 +365,31 @@ class ChatWindow(QMainWindow):
             self.message_input.setTextCursor(cursor)
         
     def send_message(self):
+        """Отправка сообщения"""
         text = self.message_input.toPlainText().strip()
         if text:
             encrypted = self.rc4.encrypt(text)
-            
-            # Отображаем сообщение
             self.display_sent_message(encrypted, text)
             
-            # Отправляем сообщение
             if self.socket:
                 try:
-                    # Явно указываем кодировку UTF-8
                     message = (encrypted + "\n").encode('utf-8')
                     self.socket.send(message)
                 except Exception as e:
                     logger.error(f"Ошибка отправки сообщения: {e}")
                     self.close()
             
-            # Очищаем поле ввода
             self.message_input.clear()
             
     def display_sent_message(self, encrypted: str, decrypted: str):
+        """Отображение отправленного сообщения"""
         cursor = self.chat_area.textCursor()
         cursor.movePosition(cursor.End)
         
         cursor.insertHtml('''
             <div style="margin: 10px 0; display: flex; align-items: center;">
                 <div style="color: gray; font-size: 12px; margin-right: 10px;">Отправлено</div>
-                <div style="
-                    padding: 10px;
-                    border-radius: 10px;
-                    display: inline-block;
-                ">
+                <div style="padding: 10px; border-radius: 10px;">
         ''')
         
         cursor.insertHtml(f'<div style="color: red; margin-bottom: 5px;">[{encrypted}]</div>')        
@@ -379,17 +401,14 @@ class ChatWindow(QMainWindow):
         )
 
     def display_received_message(self, encrypted: str, decrypted: str):
+        """Отображение полученного сообщения"""
         cursor = self.chat_area.textCursor()
         cursor.movePosition(cursor.End)
         
         cursor.insertHtml('''
             <div style="margin: 10px 0; display: flex; align-items: center;">
                 <div style="color: gray; font-size: 12px; margin-right: 10px;">Получено</div>
-                <div style="
-                    padding: 10px;
-                    border-radius: 10px;
-                    display: inline-block;
-                ">
+                <div style="padding: 10px; border-radius: 10px;">
         ''')
         
         cursor.insertHtml(f'<div style="color: red; margin-bottom: 5px;">[{encrypted}]</div>')
@@ -401,14 +420,13 @@ class ChatWindow(QMainWindow):
         )
 
     def generate_keys(self):
-        """Генерация ключей RSA."""
-        from RSA import generate_keys
+        """Генерация ключей RSA"""
         (self.e, self.n), self.d = generate_keys()
         logger.info(f"Сгенерированы ключи RSA: e={self.e}, n={self.n}, d={self.d}")
-        self.send_key_button.setEnabled(True)  # Включаем кнопку "Отправить"
+        self.send_key_button.setEnabled(True)
 
     def send_keys(self):
-        """Отправка открытого ключа серверу."""
+        """Отправка открытого ключа RSA"""
         if self.e is not None and self.n is not None:
             public_key = f"KEYS|{self.e}|{self.n}"
             encrypted_key = self.rc4.encrypt(public_key)
@@ -422,7 +440,7 @@ class ChatWindow(QMainWindow):
                     self.close()
 
     def load_file(self):
-        """Загрузка файла."""
+        """Загрузка файла для подписи"""
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_path, _ = QFileDialog.getOpenFileName(
@@ -451,33 +469,26 @@ class ChatWindow(QMainWindow):
                 logger.error(f"Ошибка при загрузке файла {file_path}: {e}") 
 
     def handle_keys_received(self, e: int, n: int):
-        """Handle received server keys"""
+        """Обработка полученных ключей RSA"""
         self.server_e = e
         self.server_n = n
-        self.update_sign_button_state()  
-
+        self.update_sign_button_state()
 
     def sign_file(self):
-        """Подпись файла."""
+        """Подпись и отправка файла"""
         if self.file_path and self.d and self.n:
             with open(self.file_path, 'r') as file:
                 file_data = file.read()
 
-            # хеш файла H
             file_hash = hash_md5(file_data)
             logger.info(f"Хеш файла: {file_hash}")
 
-            # X = H^d mod n
             signature = mod_exp(int(file_hash, 16), self.d, self.n)
             logger.info(f"Файл подписан: {self.file_path}, X: {signature}")
             
-            # Объединяем данные в одну строку
             command = f"ECP|{file_data}|{signature}"
-            
-            # Зашифровываем команду
             encrypted_command = self.rc4.encrypt(command)
             
-            # Отправляем зашифрованную команду на основной клиент
             if self.socket:
                 try:
                     self.socket.send((encrypted_command + "\n").encode())
@@ -486,7 +497,13 @@ class ChatWindow(QMainWindow):
                     logger.error(f"Ошибка отправки файла и подписи: {e}")
 
 class MainWindow(QMainWindow):
-    """Главное окно приложения."""
+    """
+    Главное окно приложения.
+    
+    Отвечает за:
+    - Регистрацию пользователей
+    - Вход в систему
+    """
     def __init__(self, client):
         super().__init__()
         self.client = client
@@ -494,7 +511,7 @@ class MainWindow(QMainWindow):
         self.show_registration()
         
     def init_ui(self):
-        """Инициализация UI."""
+        """Инициализация интерфейса"""
         self.setWindowTitle('Клиент')
         self.setGeometry(100, 100, 300, 200)
         
@@ -503,7 +520,7 @@ class MainWindow(QMainWindow):
         self.layout = QVBoxLayout(self.central_widget)
         
     def show_registration(self):
-        """Показать окно регистрации."""
+        """Отображение формы регистрации"""
         self.clear_layout()
         
         self.layout.addWidget(QLabel('Регистрация'))
@@ -526,7 +543,7 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(login_link)
         
     def show_login(self):
-        """Показать окно входа."""
+        """Отображение формы входа"""
         self.clear_layout()
         
         self.layout.addWidget(QLabel('Вход'))
@@ -549,14 +566,14 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(register_link)
         
     def clear_layout(self):
-        """Очистка layout."""
+        """Очистка layout"""
         while self.layout.count():
             child = self.layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
                 
     def register(self):
-        """Обработка регистрации."""
+        """Обработка регистрации"""
         login = self.login_input.text()
         password = self.password_input.text()
         
@@ -569,33 +586,27 @@ class MainWindow(QMainWindow):
         success, message = self.client.register(login, password)
         if success:
             QMessageBox.information(self, 'Успех', message)
-            logger.info(f"Пользователь с логином {login} и паролем {password} успешно зарегистрирован")
+            logger.info(f"Регистрация успешна: {login}")
             self.show_login()
         else:
             QMessageBox.warning(self, 'Ошибка', message)
             logger.error(f"Ошибка регистрации: {message}")
         
     def login(self):
-        """Обработка входа."""
+        """Обработка входа"""
         login = self.login_input.text()
         password = self.password_input.text()
-        
-        # valid, message = validate_credentials(login, password)
-        # if not valid:
-        #     QMessageBox.warning(self, 'Ошибка', message)
-        #     return
             
-        # Убираем лишний лог здесь
         success, message = self.client.authenticate(login, password)
         
         if success:
-            self.hide()  # Hide auth window
+            self.hide()
         else:
             QMessageBox.warning(self, 'Ошибка', message)
             self.close()
 
 def main():
-    """Запуск приложения."""
+    """Точка входа в приложение"""
     app = QApplication(sys.argv)
     client = Client()
     window = MainWindow(client)
