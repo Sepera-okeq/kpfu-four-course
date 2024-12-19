@@ -23,13 +23,14 @@ from PyQt5.QtCore import Qt, QObject, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from .database import UserDatabase
-from .helpers import generate_sw, hash_md5, generate_odd_64bit, generate_prime_512bit, generate_generator, mod_exp
-from .RC4 import RC4
-from .RSA import generate_keys
-from .logger import Logger
+# Импорты из utils
+from utils import (
+    Logger, RC4, RSA, UserDatabase,
+    generate_sw, hash_md5, generate_odd_64bit,
+    generate_prime_512bit, generate_generator, mod_exp
+)
 
-logger = Logger()
+logger = Logger("server")
 
 class ServerThread(QThread):
     """
@@ -231,7 +232,7 @@ class ChatWindow(QMainWindow):
 
     def generate_keys(self):
         """Генерация ключей RSA"""
-        (self.e, self.n), self.d = generate_keys()
+        (self.e, self.n), self.d = RSA.generate_keys()
         logger.info(f"Сгенерированы ключи RSA: e={self.e}, n={self.n}, d={self.d}")
         self.send_key_button.setEnabled(True)
 

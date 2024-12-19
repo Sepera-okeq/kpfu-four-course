@@ -13,10 +13,9 @@
 import sqlite3
 from datetime import datetime
 from typing import Optional, Tuple, List
-from .helpers import hash_md5
-from .logger import Logger
+from . import hash_md5, Logger
 
-logger = Logger()
+logger = Logger("server")
 
 class UserDatabase:
     """
