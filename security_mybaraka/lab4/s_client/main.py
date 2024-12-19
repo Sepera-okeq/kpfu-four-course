@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
         
-        self.status_label = QLabel("Ожидание клиента...")
+        self.status_label = QLabel("Ожидание соединения с кем-то...")
         self.layout.addWidget(self.status_label)
         
         self.server_thread = ServerThread(server)
@@ -249,7 +249,7 @@ class ChatWindow(QMainWindow):
                     logger.error(f"Ошибка отправки ключа")
                     self.close()
 
-class ClientO(QObject):
+class ServerObject(QObject):
     """
     Основной класс сервера.
     
@@ -357,9 +357,6 @@ class ClientO(QObject):
             if self.db.find_user(login):
                 self.client_socket.send(b"EXISTS")
                 logger.info(f"Пользователь {login} уже существует")
-                self.close()
-                self.close_window_signal.emit()
-                logger.info("Соединение закрыто.")
                 return False
                 
             if self.db.add_user(login, password):
@@ -369,9 +366,6 @@ class ClientO(QObject):
             else:
                 self.client_socket.send(b"ERROR")
                 logger.info(f"Ошибка при регистрации пользователя {login}")
-                self.close()
-                self.close_window_signal.emit()
-                logger.info("Соединение закрыто.")
                 return False
                 
         except Exception as e:
@@ -395,9 +389,6 @@ class ClientO(QObject):
             if not user:
                 logger.info("Пользователь не найден")
                 self.client_socket.send(b"NOT_FOUND")
-                self.close()
-                self.close_window_signal.emit()
-                logger.info("Соединение закрыто.")
                 return False
 
             sw = generate_sw()
@@ -420,9 +411,6 @@ class ClientO(QObject):
             if client_hash != server_hash:
                 logger.info("Неверный пароль")
                 self.client_socket.send(b"WRONG_PASSWORD")
-                self.close()
-                self.close_window_signal.emit()
-                logger.info("Соединение закрыто.")
                 return False
             
             logger.info("Аутентификация успешна")
@@ -508,7 +496,7 @@ class ClientO(QObject):
 def main():
     """Точка входа в приложение"""
     app = QApplication(sys.argv)
-    server = ClientO()
+    server = ServerObject()
     window = MainWindow(server)
     window.show()
     sys.exit(app.exec_())

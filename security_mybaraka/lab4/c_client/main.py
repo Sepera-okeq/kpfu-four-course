@@ -83,7 +83,7 @@ class MessageThread(QThread):
         except Exception as e:
             logger.error(f"Ошибка в потоке сообщений: {e}")
 
-class Client:
+class ClientObject:
     """
     Основной класс клиента.
     
@@ -608,7 +608,7 @@ class MainWindow(QMainWindow):
 def main():
     """Точка входа в приложение"""
     app = QApplication(sys.argv)
-    client = Client()
+    client = ClientObject()
     window = MainWindow(client)
     window.show()
     sys.exit(app.exec_())
