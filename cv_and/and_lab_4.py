@@ -366,7 +366,9 @@ plt.imshow(
     aspect='auto'
 )
 plt.title('Сглаженный кумулятивный массив (пространство Хафа)')
+# Углу наклона прямой
 plt.xlabel('Theta (градусы)')
+# Расстоянию от начала координат до прямой
 plt.ylabel('Rho (пиксели)')
 plt.colorbar()
 plt.tight_layout()
