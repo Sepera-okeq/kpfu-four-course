@@ -84,10 +84,9 @@ def calculate_orientation(image, keypoints, patch_size=31):
 
     return orientations
 
-# detect_fast исправлено:
 def detect_fast(image, threshold=30):
     """Реализация FAST для детектирования ключевых точек."""
-    image = image.astype(np.int32)  # Избегаем переполнения
+    image = image.astype(np.int32)
     rows, cols = image.shape
     keypoints = []
 
@@ -126,7 +125,6 @@ def detect_fast(image, threshold=30):
     return keypoints
 
 
-# brief_descriptor исправлено (добавлен обработчик длины):
 def brief_descriptor(image, keypoints, orientations, patch_size=31, n=256):
     """Генерация бинарных дескрипторов BRIEF."""
     descriptors = []
@@ -157,37 +155,31 @@ def brief_descriptor(image, keypoints, orientations, patch_size=31, n=256):
     return np.array(descriptors, dtype=np.uint8)
 
 
-# Главная функция
-def main():
-    # Пример загрузки изображения
-    image = plt.imread("image.png")
-    if image.ndim == 3:  # Преобразование в градации серого
-        image = np.mean(image, axis=2)
-    image = (image * 255).astype(np.uint8)
+# Пример загрузки изображения
+image = plt.imread("image.png")
+if image.ndim == 3:  # Преобразование в градации серого
+    image = np.mean(image, axis=2)
+image = (image * 255).astype(np.uint8)
 
-    # Сглаживаем изображение
-    image_smoothed = gaussian_blur(image, kernel_size=5, sigma=1)
+# Сглаживаем изображение
+image_smoothed = gaussian_blur(image, kernel_size=5, sigma=1)
 
-    # 1. Детектирование FAST
-    keypoints = detect_fast(image_smoothed, threshold=10)
+# 1. Детектирование FAST
+keypoints = detect_fast(image_smoothed, threshold=10)
 
-    # 2. Фильтрация Харриса
-    keypoints = harris_detector(image_smoothed, keypoints)
+# 2. Фильтрация Харриса
+keypoints = harris_detector(image_smoothed, keypoints)
 
-    # 3. Вычисляем ориентации
-    orientations = calculate_orientation(image_smoothed, keypoints)
+# 3. Вычисляем ориентации
+orientations = calculate_orientation(image_smoothed, keypoints)
 
-    # 4. Генерация дескрипторов BRIEF
-    descriptors = brief_descriptor(image_smoothed, keypoints, orientations)
+# 4. Генерация дескрипторов BRIEF
+descriptors = brief_descriptor(image_smoothed, keypoints, orientations)
 
-    # Отображаем ключевые точки
-    plt.imshow(image, cmap="gray")
-    for x, y in keypoints:
-        plt.scatter(x, y, c="red", s=5)
-    plt.show()
+# Отображаем ключевые точки
+plt.imshow(image, cmap="gray")
+for x, y in keypoints:
+    plt.scatter(x, y, c="red", s=5)
+plt.show()
 
-    np.save("descriptors.npy", descriptors)
-
-
-if __name__ == "__main__":
-    main()
+np.save("descriptors.npy", descriptors)
