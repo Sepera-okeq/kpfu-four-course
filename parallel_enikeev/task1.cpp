@@ -301,7 +301,7 @@ void generate_plot() {
     cout << "\nРезультаты тестирования:" << endl;
     for (size_t i = 0; i < thread_counts.size(); ++i) {
         cout << "Потоки: " << thread_counts[i] 
-             << ", Время: " << execution_times[i] 
+             << ", Время: " << std::fixed << execution_times[i] 
              << ", Ускорение: " << speedup_times[i] << endl;
     }
 }
@@ -351,5 +351,7 @@ int main(int argc, char* argv[]) {
 
     cerr << "Не передан аргумент задачи. Доступные задачи:\n";
     cerr << "  -task2: Подсчитать минимальный размер M.\n";
+    cerr << "  -task3: Выполнить гибридное вычисление частичных сумм.\n";
+    cerr << "  -task4: Построить график ускорения.\n";
     return 1;
 }
