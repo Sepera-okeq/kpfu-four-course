@@ -89,7 +89,6 @@ def fast_detector(image, threshold=30):
     circle_points = get_bresenham_circle_points(3)  # радиус=3 для 16 точек
     keypoints = []
     
-    # Преобразуем в float32 для безопасной арифметики
     image_float = image.astype(np.float32)
     padded = np.pad(image_float, pad_width=3, mode='reflect')
     
@@ -116,6 +115,9 @@ def fast_detector(image, threshold=30):
                         else:
                             brighter = darker = 0
                         
+                        # Если на окружности есть 12 последовательных точек,
+                        # которые все ярче или все темнее центральной точки на величину threshold (у нас 30),
+                        # то центральная точка считается особой...
                         if brighter >= 12 or darker >= 12:
                             keypoints.append((x-3, y-3))
                             break
@@ -125,6 +127,8 @@ def fast_detector(image, threshold=30):
 
 def harris_response(image, keypoints, k=0.04):
     """Вычисление отклика Харриса для заданных точек.
+    
+    !!! Не все точки FAST одинаково полезны !!!
     
     Реализует критерий углов Харриса: R = det(M) - k*(trace(M))^2,
     где M - матрица вторых моментов градиента.
@@ -196,6 +200,8 @@ def compute_orientation(image, keypoints):
     Использует моменты m01 и m10 для определения направления градиента:
     angle = arctan2(m01, m10)
     
+    !!! Это нужно для инвариантности к повороту !!!
+    
     Аргументы:
         image: Входное изображение
         keypoints: Список ключевых точек
@@ -209,17 +215,21 @@ def compute_orientation(image, keypoints):
         # Извлекаем патч вокруг ключевой точки
         patch = padded[y:y+patch_size, x:x+patch_size]
         
-        # Вычисляем моменты
-        m00 = np.sum(patch)
-        m10 = np.sum(np.arange(patch_size) * np.sum(patch, axis=0))
-        m01 = np.sum(np.arange(patch_size) * np.sum(patch, axis=1))
+        # Вычисляем центрированные координаты
+        y_coords, x_coords = np.mgrid[:patch_size, :patch_size] - patch_size//2
         
-        # Вычисляем центроид и ориентацию
+        # Вычисляем моменты с учетом центрирования
+        m00 = np.sum(patch)
+        m10 = np.sum(x_coords * patch)  # используем x_coords для m10
+        m01 = np.sum(y_coords * patch)  # используем y_coords для m01
+        
+        # Вычисляем ориентацию
         if m00 != 0:
-            x_centroid = m10 / m00
-            y_centroid = m01 / m00
+            # Нормализуем моменты
+            m10 = m10 / m00
+            m01 = m01 / m00
             
-            # Вычисляем ориентацию
+            # Вычисляем угол, учитывая правильное направление градиента
             angle = np.arctan2(m01, m10)
         else:
             angle = 0
@@ -362,7 +372,7 @@ def main():
         os.makedirs(results_dir)
     
     # Загружаем и обрабатываем изображение
-    image = load_image('image.png')
+    image = load_image('pizza.png')
     if image is None:
         return
     
@@ -402,8 +412,8 @@ def main():
     
     # Рисуем линии ориентации
     for (x, y), orientation in zip(keypoints, orientations):
-        dx = np.cos(orientation) * 5
-        dy = np.sin(orientation) * 5
+        dx = np.cos(orientation) * 10
+        dy = np.sin(orientation) * 10
         plt.plot([x, x + dx], [y, y + dy], 'g-', linewidth=1)
     
     plt.title(f'Особые точки ORB (Найдено {len(keypoints)} точек)')
