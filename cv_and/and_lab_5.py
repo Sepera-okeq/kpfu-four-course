@@ -116,7 +116,7 @@ def fast_detector(image, threshold=30):
                             brighter = darker = 0
                         
                         # Если на окружности есть 12 последовательных точек,
-                        # которые все ярче или все темнее центральной точки на величину threshold (у нас 30),
+                        # которые все ярче или все темнее центральной точки на величину threshold (у нас 40),
                         # то центральная точка считается особой...
                         if brighter >= 12 or darker >= 12:
                             keypoints.append((x-3, y-3))
@@ -177,7 +177,7 @@ def harris_response(image, keypoints, k=0.04):
     
     return np.array(responses)
 
-def filter_keypoints(keypoints, responses, max_points=1000):
+def filter_keypoints(keypoints, responses, max_points=500):
     """Фильтрация ключевых точек на основе отклика Харриса.
     
     Отбирает top-N точек с наибольшим откликом Харриса.
@@ -378,12 +378,12 @@ def main():
     
     # 1. Детектируем углы FAST
     print("Шаг 1: Детектирование углов FAST...")
-    keypoints = fast_detector(image, threshold=30)
+    keypoints = fast_detector(image, threshold=40)
     print(f"Найдено {len(keypoints)} начальных точек")
     
     # 2. Фильтруем с помощью отклика Харриса
     print("\nШаг 2: Фильтрация с помощью критерия Харриса...")
-    responses = harris_response(image, keypoints, k=0.04)
+    responses = harris_response(image, keypoints, k=0.06)
     keypoints = filter_keypoints(keypoints, responses)
     print(f"Осталось {len(keypoints)} точек после фильтрации")
     
