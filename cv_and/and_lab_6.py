@@ -7,7 +7,7 @@ from PIL import Image
 
 # Константы
 PATCH_SIZE = 31  # Размер патча для дескриптора
-K = 0.04  # Константа для вычисления значений R в методе Харриса
+K = 0.06  # Константа для вычисления значений R в методе Харриса
 LOWE_RATIO = 0.8  # Порог для теста Лоу
 RANSAC_ITERATIONS = 5  # Количество итераций RANSAC
 RANSAC_DISTANCE_THRESHOLD = 2  # Порог расстояния для RANSAC
@@ -465,20 +465,18 @@ def draw_features_on_image(image, points, color=[128, 0, 255]):
 
     # Рисуем точки
     for center_y, center_x in points:
-        result_image[center_y - 1 : center_y + 2, center_x - 3] = color
+        for dy in range(-1, 2):
+            result_image[center_y + dy, center_x - 3] = color
+            result_image[center_y + dy, center_x + 3] = color
 
         result_image[center_y + 2, center_x - 2] = color
-
-        result_image[center_y + 3, center_x - 1 : center_x + 2] = color
-
         result_image[center_y + 2, center_x + 2] = color
 
-        result_image[center_y - 1 : center_y + 2, center_x + 3] = color
+        for dx in range(-1, 2):
+            result_image[center_y + 3, center_x + dx] = color
+            result_image[center_y - 3, center_x + dx] = color
 
         result_image[center_y - 2, center_x + 2] = color
-
-        result_image[center_y - 3, center_x - 1 : center_x + 2] = color
-
         result_image[center_y - 2, center_x - 2] = color
 
     return result_image
