@@ -108,6 +108,7 @@ def main():
     digits, X, y = load_data()
     
     # Список типов признаков для сравнения
+    # 64 признака //// 16 бинов (= 16 признаков)
     feature_types = ['raw', 'histogram']
     
     for feature_type in feature_types:
@@ -126,11 +127,22 @@ def main():
         
         # Оцениваем качество кластеризации
         intra_dist, inter_dist, conf_matrix = evaluate_clustering(features_scaled, kmeans, y)
-        
+        # !!!! Среднее внутрикластерное расстояние (чем меньше, тем лучше) !!!!!
         print(f"Среднее внутрикластерное расстояние: {intra_dist:.4f}")
+        # !!!! Среднее межкластерное расстояние (чем больше, тем лучше) !!!!!
         print(f"Среднее межкластерное расстояние: {inter_dist:.4f}")
         print("\nМатрица ошибок:")
-        print(conf_matrix)
+        fig, ax = plt.subplots(figsize=(8, 6))
+        cax = ax.matshow(conf_matrix, cmap=plt.cm.Blues)
+        fig.colorbar(cax)
+
+        for (i, j), val in np.ndenumerate(conf_matrix):
+            ax.text(j, i, f'{val}', ha='center', va='center', color='red')
+
+        plt.xlabel('Пред')
+        plt.ylabel('Истина')
+        plt.title('Матрица ошибок')
+        plt.show()
         
         # Визуализируем результаты
         plot_results(digits, kmeans, feature_type)
