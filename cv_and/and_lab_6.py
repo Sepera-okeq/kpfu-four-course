@@ -55,7 +55,7 @@ def display_image(image, title="", cmap="gray", save_path=None):
     if save_path:
         plt.savefig(save_path)
 
-    plt.show()
+    #plt.show()
 
 def resize_image(image, scale_factor):
     """
@@ -340,41 +340,6 @@ def compute_image_gradient(image):
 
     return gradient
 
-def visualize_gradients(gradient_query, gradient_test):
-    """
-    Визуализирует градиенты двух изображений.
-
-    Args:
-        gradient_query: Градиент первого изображения.
-        gradient_test: Градиент второго изображения.
-    """
-    plt.figure(figsize=(15, 10))
-
-    # Градиенты для первого изображения
-    plt.subplot(221)
-    plt.imshow(gradient_query[:, :, 0], cmap="gray")
-    plt.title("Box: Градиент по X")
-    plt.axis("off")
-
-    plt.subplot(222)
-    plt.imshow(gradient_query[:, :, 1], cmap="gray")
-    plt.title("Box: Градиент по Y")
-    plt.axis("off")
-
-    # Градиенты для второго изображения
-    plt.subplot(223)
-    plt.imshow(gradient_test[:, :, 0], cmap="gray")
-    plt.title("Scene: Градиент по X")
-    plt.axis("off")
-
-    plt.subplot(224)
-    plt.imshow(gradient_test[:, :, 1], cmap="gray")
-    plt.title("Scene: Градиент по Y")
-    plt.axis("off")
-
-    plt.tight_layout()
-    plt.show()
-
 def compute_structure_tensor_for_points(image, gradient, feature_points):
     """
     Вычисляет матрицу вторых моментов (тензор структуры) для каждой ключевой точки.
@@ -478,7 +443,7 @@ def filter_points_by_harris_response(feature_points, R_values, max_points):
 
     return filtered_points
 
-def draw_features_on_image(image, points, color=[0, 0, 255]):
+def draw_features_on_image(image, points, color=[128, 0, 255]):
     """
     Рисует ключевые точки на изображении.
 
@@ -905,7 +870,7 @@ def visualize_matches(image1, image2, points1, points2):
     result[0:img2_with_points.shape[0], 0:width2] = img2_with_points
     result[0:img1_with_points.shape[0], width2:] = img1_with_points
 
-    color = [0, 0, 255]
+    color = [128, 0, 255]
     for i in range(len(points1)):
         x1, y1 = points1[i]
         y1 += width2
@@ -1184,16 +1149,16 @@ def detect_object_with_transform(box_image, scene_image, transform_matrix, trans
     """
     height, width = box_image.shape
 
-    object_points = []
-    for y in range(height):
-        for x in range(width):
-            object_points.append([y, x])
+    # Углы прямоугольника объекта
+    object_corners = np.array([
+        [0, 0],
+        [0, width - 1],
+        [height - 1, 0],
+        [height - 1, width - 1]
+    ])
 
-    transformed_points = apply_affine_transformation(
-        object_points, transform_matrix, translation
-    )
-
-    polygon_points = np.array(transformed_points, dtype=int)
+    # Применяем аффинное преобразование к углам
+    transformed_corners = apply_affine_transformation(object_corners, transform_matrix, translation)
 
     if len(scene_image.shape) == 2:
         # Приведение к RGB
@@ -1201,11 +1166,15 @@ def detect_object_with_transform(box_image, scene_image, transform_matrix, trans
     else:
         result_scene = scene_image.copy()
 
-    scene_height, scene_width = result_scene.shape[:2]
-    for point in polygon_points:
-        y, x = point
-        if 0 <= y < scene_height and 0 <= x < scene_width:
-            result_scene[y, x] = [255, 0, 0]
+    # Рисуем прямоугольник на изображении сцены
+    for i in range(len(transformed_corners)):
+        start_point = transformed_corners[i]
+        end_point = transformed_corners[(i + 1) % len(transformed_corners)]
+        line_points = draw_line_bresenham(int(start_point[0]), int(start_point[1]), int(end_point[0]), int(end_point[1]), max(result_scene.shape))
+
+        for y, x in line_points:
+            if 0 <= y < result_scene.shape[0] and 0 <= x < result_scene.shape[1]:
+                result_scene[y, x] = [255, 0, 0]
 
     return result_scene
 
@@ -1239,9 +1208,6 @@ print(
 # Вычисление градиента изображений
 gradient_query = compute_image_gradient(box_image)
 gradient_test = compute_image_gradient(box_in_scene_image)
-
-# Визуализация градиентов
-visualize_gradients(gradient_query, gradient_test)
 
 # Вычисление матрицы вторых моментов для каждой ключевой точки
 M_matrices_query = compute_structure_tensor_for_points(
