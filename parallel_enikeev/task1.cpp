@@ -1,12 +1,12 @@
-﻿#include <matplot/matplot.h>
-#include <omp.h>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <cmath>
-#include <algorithm>
-#include <string>
-#include <cstdlib>
+﻿#include <matplot/matplot.h> // Библиотека для построения графиков
+#include <omp.h> // Библиотека OpenMP для параллельного программирования
+#include <iostream> // Ввод/вывод
+#include <fstream> // Работа с файлами
+#include <vector> // Динамические массивы
+#include <cmath> // Математические функции
+#include <algorithm> // Алгоритмы STL
+#include <string> // Строки
+#include <cstdlib> // Стандартные функции C (rand, srand)
 
 using namespace matplot;
 using namespace std;
@@ -15,8 +15,10 @@ using namespace std;
 // Функции для вычисления частичных сумм (линейно)
 // =============================================
 void compute_linear_prefix_sum(vector<double>& arr) {
+    // Последовательное вычисление префиксных сумм
     for (size_t i = 1; i < arr.size(); i++) {
-        arr[i] += arr[i - 1];
+        // Каждый элемент становится суммой себя и предыдущих элементов
+        arr[i] += arr[i - 1]; 
     }
 }
 
@@ -30,36 +32,42 @@ void compute_linear_prefix_sum(vector<double>& arr) {
  */
 // =============================================
 void compute_parallel_prefix_sum(vector<double>& arr) {
-    int n = arr.size();
-    int num_threads = omp_get_max_threads();
-    
+    int n = arr.size(); // Размер массива
+    int num_threads = omp_get_max_threads(); // Получаем максимальное количество доступных потоков
+
     // Распараллеливаем первичное накопление сумм в блоках
-    #pragma omp parallel num_threads(num_threads)
+    // Директива OpenMP для создания параллельной области
+    #pragma omp parallel num_threads(num_threads) 
     {
+        // Получаем ID текущего потока
         int thread_id = omp_get_thread_num();
+        // Вычисляем размер блока для каждого потока
         int chunk_size = n / num_threads;
+        // Начало блока для текущего потока
         int start = thread_id * chunk_size;
+        // Конец блока для текущего потока (обработка последнего блока, если n не делится на num_threads)
         int end = (thread_id == num_threads - 1) ? n : start + chunk_size;
 
-        // Локальное накопление в блоке
+        // Локальное накопление в блоке. Каждый поток считает префиксные суммы в своем блоке
         for (int i = start + 1; i < end; ++i) {
             arr[i] += arr[i-1];
         }
     }
 
-    // Объединение блоков
+    // Объединение блоков. Создаем массив для хранения сумм каждого блока
     vector<double> block_sums(num_threads);
     for (int i = 0; i < num_threads; ++i) {
         int chunk_size = n / num_threads;
-        block_sums[i] = arr[(i + 1) * chunk_size - 1];
+        // Записываем последний элемент каждого блока (который содержит сумму блока) в block_sums
+        block_sums[i] = arr[(i + 1) * chunk_size - 1]; 
     }
 
-    // Префиксная сумма для блоков
+    // Префиксная сумма для блоков. Считаем префиксные суммы для block_sums
     for (int i = 1; i < num_threads; ++i) {
         block_sums[i] += block_sums[i-1];
     }
 
-    // Распространение сумм блоков
+    // Распространение сумм блоков. Добавляем сумму предыдущих блоков к каждому элементу текущего блока
     #pragma omp parallel num_threads(num_threads)
     {
         int thread_id = omp_get_thread_num();
@@ -67,8 +75,10 @@ void compute_parallel_prefix_sum(vector<double>& arr) {
         int start = thread_id * chunk_size;
         int end = (thread_id == num_threads - 1) ? n : start + chunk_size;
 
-        double block_offset = (thread_id > 0) ? block_sums[thread_id - 1] : 0;
+        // Смещение для текущего блока (сумма всех предыдущих блоков)
+        double block_offset = (thread_id > 0) ? block_sums[thread_id - 1] : 0; 
         
+        // Добавляем смещение к каждому элементу в блоке
         for (int i = start; i < end; ++i) {
             arr[i] += block_offset;
         }
@@ -90,42 +100,42 @@ void compute_parallel_prefix_sum(vector<double>& arr) {
  */
 // =============================================
 int calculate_effectify_parralel_value_M() {
-    ofstream output_file;
-    output_file.open("output.txt", ofstream::trunc);
+    ofstream output_file; // Создаем объект для записи в файл
+    output_file.open("output.txt", ofstream::trunc); // Открываем файл output.txt для записи,  ofstream::trunc очищает файл перед записью
 
-    if (!output_file.is_open()) {
+    if (!output_file.is_open()) { // Проверяем, успешно ли открыт файл
         cerr << "Ошибка: невозможно открыть файл для записи значения M!\n";
-        return -1;
+        return -1; // Возвращаем -1 в случае ошибки
     }
 
-    int number = 10; 
-    int iterations = 10; // Добавляем количество итераций для усреднения
-    
+    int number = 10; // Начальный размер массива
+    int iterations = 10; // Количество итераций для усреднения времени
+
     while (true) {
-        double avg_lin_time = 0, avg_par_time = 0;
+        double avg_lin_time = 0, avg_par_time = 0; // Переменные для среднего времени
 
         // Цикл для усреднения времени
         for (int iter = 0; iter < iterations; ++iter) {
-            vector<double> arr(number);
+            vector<double> arr(number); // Создаем массив заданного размера
             for (size_t i = 0; i < arr.size(); i++) {
-                arr[i] = static_cast<double>(rand() % 100);
+                arr[i] = static_cast<double>(rand() % 100); // Заполняем массив случайными числами
             }
-            vector<double> arr_clone(arr);
+            vector<double> arr_clone(arr); // Копируем массив для корректного сравнения
 
             // Измеряем линейное время
-            double start_lin = omp_get_wtime();
-            compute_linear_prefix_sum(arr_clone);
-            double end_lin = omp_get_wtime();
-            double lin_time = end_lin - start_lin;
-            avg_lin_time += lin_time;
+            double start_lin = omp_get_wtime(); // Получаем текущее время
+            compute_linear_prefix_sum(arr_clone); // Вызываем линейную функцию
+            double end_lin = omp_get_wtime();  // Получаем текущее время
+            double lin_time = end_lin - start_lin; // Вычисляем время выполнения
+            avg_lin_time += lin_time; //  Добавляем к суммарному времени
 
             // Измеряем параллельное время
-            arr_clone = vector<double>(arr);
-            double start_par = omp_get_wtime();
-            compute_parallel_prefix_sum(arr_clone);
-            double end_par = omp_get_wtime();
-            double par_time = end_par - start_par;
-            avg_par_time += par_time;
+            arr_clone = vector<double>(arr);  // Восстанавливаем исходный массив
+            double start_par = omp_get_wtime();  // Получаем текущее время
+            compute_parallel_prefix_sum(arr_clone); // Вызываем параллельную функцию
+            double end_par = omp_get_wtime(); // Получаем текущее время
+            double par_time = end_par - start_par; // Вычисляем время выполнения
+            avg_par_time += par_time; //  Добавляем к суммарному времени
         }
 
         // Усредняем результаты
@@ -138,15 +148,15 @@ int calculate_effectify_parralel_value_M() {
 
         // Критерий эффективности: параллельное время должно быть меньше линейного
         if (avg_par_time < avg_lin_time) {
-            break;
+            break; // Выходим из цикла, если параллельный алгоритм быстрее
         }
 
-        number += 10; // Увеличиваем размер более существенно
+        number += 10; // Увеличиваем размер массива для следующей итерации
     }
 
     // Сохраняем значение M в файл
     output_file << number;
-    output_file.close();
+    output_file.close(); // Закрываем файл
 
     cout << "Минимальный размер M записан в файл: " << number << "\n";
     return number;
@@ -162,25 +172,25 @@ int calculate_effectify_parralel_value_M() {
  */
 // =============================================
 void hybrid_prefix_sum(vector<double>& arr) {
-    ifstream input_file("output.txt");
+    ifstream input_file("output.txt"); // Открываем файл output.txt для чтения
     int threshold_M = 0;
 
-    if (input_file.is_open()) {
-        input_file >> threshold_M;
-        input_file.close();
+    if (input_file.is_open()) { // Проверяем, успешно ли открыт файл
+        input_file >> threshold_M; // Читаем значение M из файла
+        input_file.close(); // Закрываем файл
         cout << "Прочитано значение M из файла: " << threshold_M << endl;
     } else {
         cerr << "Ошибка: файл output.txt не найден. Запустите программу с аргументом -task2 для вычисления M.\n";
-        exit(1);
+        exit(1); // Завершаем программу с кодом ошибки
     }
 
     // Гибридный выбор: последовательный или параллельный алгоритм
     if (arr.size() < static_cast<size_t>(threshold_M)) {
         cout << "Используется последовательный алгоритм (n < M).\n";
-        compute_linear_prefix_sum(arr);
+        compute_linear_prefix_sum(arr); // Вызываем линейный алгоритм
     } else {
         cout << "Используется параллельный алгоритм (n >= M).\n";
-        compute_parallel_prefix_sum(arr);
+        compute_parallel_prefix_sum(arr); // Вызываем параллельный алгоритм
     }
 }
 
@@ -264,44 +274,44 @@ void generate_plot() {
         speedup_times.push_back(base_time / avg_parallel_time);
     }
 
-    // Создание графиков с использованием современного синтаксиса Matplot++
+    // Создание графиков
     auto fig = matplot::figure();
-    fig->width(1200);  // Увеличиваем ширину окна
-    fig->height(800);  // Увеличиваем высоту окна
+    fig->width(1200);  // Устанавливаем ширину окна графика
+    fig->height(800); // Устанавливаем высоту окна графика
 
-    // Первый subplot - времена выполнения
-    matplot::subplot(2, 1, 0);
-    auto p1 = matplot::plot(thread_counts, execution_times);
-    p1->line_width(2);
-    p1->marker("o");  // Круглые маркеры
-    p1->color("blue");
-    matplot::xlabel("Количество потоков");
-    matplot::ylabel("Время выполнения (сек)");
-    matplot::title("Время выполнения параллельного алгоритма");
-    matplot::grid(true);
+    // Первый subplot - времена выполнения. subplot(rows, cols, index) создает сетку графиков rows x cols и выбирает график с индексом index
+    matplot::subplot(2, 1, 0); // Создаем график в первой строке (из двух)
+    auto p1 = matplot::plot(thread_counts, execution_times); // Строим график времени выполнения от количества потоков
+    p1->line_width(2); // Устанавливаем толщину линии
+    p1->marker("o");  // Устанавливаем маркер точки как кружок
+    p1->color("blue"); // Устанавливаем цвет линии
+    matplot::xlabel("Количество потоков"); // Подпись оси X
+    matplot::ylabel("Время выполнения (сек)"); // Подпись оси Y
+    matplot::title("Время выполнения параллельного алгоритма"); // Заголовок графика
+    matplot::grid(true); // Включаем сетку
 
     // Второй subplot - ускорение
-    matplot::subplot(2, 1, 1);
-    auto p2 = matplot::plot(thread_counts, speedup_times);
-    p2->line_width(2);
-    p2->marker("o");  // Круглые маркеры
-    p2->color("red");
-    matplot::xlabel("Количество потоков");
-    matplot::ylabel("Ускорение");
-    matplot::title("Коэффициент ускорения");
-    matplot::grid(true);
+    matplot::subplot(2, 1, 1); // Создаем график во второй строке (из двух)
+    auto p2 = matplot::plot(thread_counts, speedup_times);  // Строим график ускорения от количества потоков
+    p2->line_width(2);  // Устанавливаем толщину линии
+    p2->marker("o"); // Устанавливаем маркер точки как кружок
+    p2->color("red"); // Устанавливаем цвет линии
+    matplot::xlabel("Количество потоков"); // Подпись оси X
+    matplot::ylabel("Ускорение"); // Подпись оси Y
+    matplot::title("Коэффициент ускорения"); // Заголовок графика
+    matplot::grid(true); // Включаем сетку
 
-    // Сохранение графика
+    // Сохранение графика в файл
     matplot::save("performance_plot.png");
 
-    // Вывод графиков
+    // Вывод графиков на экран
     matplot::show();
 
     // Дополнительный вывод результатов в консоль
     cout << "\nРезультаты тестирования:" << endl;
     for (size_t i = 0; i < thread_counts.size(); ++i) {
-        cout << "Потоки: " << thread_counts[i] 
-             << ", Время: " << std::fixed << execution_times[i] 
+        cout << "Потоки: " << thread_counts[i]
+             << ", Время: " << std::fixed << execution_times[i]
              << ", Ускорение: " << speedup_times[i] << endl;
     }
 }
