@@ -1136,7 +1136,7 @@ def ransac_affine_transform(points1, points2, num_iterations, distance_threshold
 
 def detect_object_with_transform(box_image, scene_image, transform_matrix, translation):
     """
-    Обнаруживает объект на изображении сцены с помощью аффинного преобразования.
+    Обнаруживает объект на изображении сцены, соединяя 4 трансформированных вершины в полигон.
 
     Args:
         box_image: Изображение объекта.
@@ -1145,36 +1145,38 @@ def detect_object_with_transform(box_image, scene_image, transform_matrix, trans
         translation: Вектор смещения.
 
     Returns:
-        Изображение сцены с обведенным объектом.
+        Изображение сцены с обведенным полигоном.
     """
     height, width = box_image.shape
-
-    # Углы прямоугольника объекта
+    # Углы объекта (y, x)
     object_corners = np.array([
         [0, 0],
         [0, width - 1],
-        [height - 1, 0],
-        [height - 1, width - 1]
+        [height - 1, width - 1],
+        [height - 1, 0]
     ])
-
-    # Применяем аффинное преобразование к углам
+    # Применяем аффинное преобразование
     transformed_corners = apply_affine_transformation(object_corners, transform_matrix, translation)
 
+    # Создаем копию сцены
     if len(scene_image.shape) == 2:
-        # Приведение к RGB
         result_scene = np.stack([scene_image] * 3, axis=-1)
     else:
         result_scene = scene_image.copy()
 
-    # Рисуем прямоугольник на изображении сцены
-    for i in range(len(transformed_corners)):
-        start_point = transformed_corners[i]
-        end_point = transformed_corners[(i + 1) % len(transformed_corners)]
-        line_points = draw_line_bresenham(int(start_point[0]), int(start_point[1]), int(end_point[0]), int(end_point[1]), max(result_scene.shape))
+    # Соединяем уголки в полигон
+    polygon_points = [
+        (int(transformed_corners[i, 0]), int(transformed_corners[i, 1]))
+        for i in range(len(transformed_corners))
+    ]
 
-        for y, x in line_points:
-            if 0 <= y < result_scene.shape[0] and 0 <= x < result_scene.shape[1]:
-                result_scene[y, x] = [255, 0, 0]
+    for i in range(len(polygon_points)):
+        y0, x0 = polygon_points[i]
+        y1, x1 = polygon_points[(i + 1) % len(polygon_points)]
+        line_pts = draw_line_bresenham(y0, x0, y1, x1, max(result_scene.shape))
+        for (ly, lx) in line_pts:
+            if 0 <= ly < result_scene.shape[0] and 0 <= lx < result_scene.shape[1]:
+                result_scene[ly, lx] = [255, 0, 0]
 
     return result_scene
 
