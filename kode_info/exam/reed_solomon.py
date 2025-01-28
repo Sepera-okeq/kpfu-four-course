@@ -8,8 +8,7 @@
 - n-k+1: минимальное расстояние Хэмминга
 """
 
-from extra_math import PolynomialOperations
-from extra_math import Field, BinaryField, Matrix, solve_ax_b, create_matrix, pow_over_field
+from extra_math import Field, BinaryField, PolynomialOperations, Matrix, solve_ax_b, create_matrix, pow_over_field
 
 class GeneralizedReedSolomon:
     """
@@ -46,6 +45,9 @@ class GeneralizedReedSolomon:
 
         self.p = PolynomialOperations(self.f)
 
+        # Непустой массив элементов поля Галуа, определяющий точки оценки для кодирования. 
+        # В классическом варианте это степени примитивного элемента, в обобщенном – произвольные ненулевые элементы.
+        
         # Инициализация массива локаторов кода
         self.alpha_arr = []
         if alpha and isinstance(alpha, list):
@@ -140,7 +142,10 @@ class GeneralizedReedSolomon:
         """
         Декодирует сообщение и исправляет ошибки.
         
-        Использует алгоритм декодирования Петерсона-Горенштейна-Цирера:
+        Алгоритм Петерсона-Горенштейна-Цирера - используется для декодирования и исправления ошибок.
+        Он включает в себя нахождение многочлена локаторов ошибок, определение позиций ошибок и вычисление значений ошибок.
+        
+        Этапы алгоритма декодирования Петерсона-Горенштейна-Цирера:
         1. Вычисляет синдром принятого сообщения
         2. Находит многочлен локаторов ошибок
         3. Находит позиции ошибок
@@ -279,6 +284,7 @@ class GeneralizedReedSolomon:
             [[1]] * k_one_kernel_space.columns, self.f)).to_list(single=True)
 
         # Создание порождающей матрицы
+        # Используемая для кодирования сообщения
         for i in range(self.generator_matrix.rows):
             for j in range(self.generator_matrix.columns):
                 val = self.f.multiply(
@@ -297,6 +303,7 @@ class GeneralizedReedSolomon:
     def create_parity_check_matrix(self, k):
         """
         Создает проверочную матрицу для заданного k.
+        Используемая для вычисления синдрома и проверки корректности кода.
         
         Args:
             k: Размер исходного сообщения
