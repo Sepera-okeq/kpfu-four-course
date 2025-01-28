@@ -1,7 +1,8 @@
 import numpy as np
 from sklearn.datasets import load_digits
 from sklearn.cluster import KMeans
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_curve, auc
+from sklearn.preprocessing import label_binarize
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 
@@ -60,6 +61,87 @@ def extract_features(images, feature_type='raw'):
             features.append(magnitude_reduced)
         return np.array(features)
 
+def map_clusters_to_labels(cluster_labels, true_labels):
+    """
+    Каждому кластеру присваивается тот класс (цифра), которая встречается в нем чаще всего
+    """
+    n_clusters = len(np.unique(cluster_labels))
+    n_classes = len(np.unique(true_labels))
+    mapping_matrix = np.zeros((n_clusters, n_classes))
+
+    for i in range(len(true_labels)):
+        mapping_matrix[cluster_labels[i], true_labels[i]] += 1
+    
+    cluster_to_class = {}
+    for cluster in range(n_clusters):
+        true_class = np.argmax(mapping_matrix[cluster])
+        cluster_to_class[cluster] = true_class
+    return np.array([cluster_to_class[label] for label in cluster_labels])
+
+def calculate_metrics(y_true, y_pred):
+    """
+    Вычисляет различные метрики качества классификации
+    """
+    classes = np.unique(y_true)
+    n_classes = len(classes)
+    
+    accuracy = np.zeros(n_classes)
+    precision = np.zeros(n_classes)
+    recall = np.zeros(n_classes)
+    f1 = np.zeros(n_classes)
+    alpha = np.zeros(n_classes)
+    beta = np.zeros(n_classes)
+    
+    for i, class_label in enumerate(classes):
+        true_bin = (y_true == class_label)
+        pred_bin = (y_pred == class_label)
+        
+        TP = np.sum((true_bin) & (pred_bin))
+        FP = np.sum((y_true != class_label) & (pred_bin))
+        TN = np.sum((y_true != class_label) & (y_pred != class_label))
+        FN = np.sum((true_bin) & (y_pred != class_label))
+        
+        accuracy[i] = (TP + TN) / (TP + TN + FP + FN)
+        precision[i] = TP / (TP + FP) if (TP + FP) > 0 else 0
+        recall[i] = TP / (TP + FN) if (TP + FN) > 0 else 0
+        f1[i] = 2 * (precision[i] * recall[i]) / (precision[i] + recall[i]) if (precision[i] + recall[i]) > 0 else 0
+        alpha[i] = FP / (FP + TN) if (FP + TN) > 0 else 0
+        beta[i] = FN / (TP + FN) if (TP + FN) > 0 else 0
+    
+    return {
+        'accuracy': np.mean(accuracy),
+        'precision': np.mean(precision),
+        'recall': np.mean(recall),
+        'f1': np.mean(f1),
+        'alpha': np.mean(alpha),
+        'beta': np.mean(beta)
+    }
+
+def plot_roc_curves(y_true, y_pred, title="ROC кривые"):
+    """
+    Строит ROC-кривые для каждого класса
+    """
+    n_classes = 10
+    y_test_bin = label_binarize(y_true, classes=range(n_classes))
+    y_pred_bin = label_binarize(y_pred, classes=range(n_classes))
+    
+    plt.figure(figsize=(10, 8))
+    
+    for i in range(n_classes):
+        fpr, tpr, _ = roc_curve(y_test_bin[:, i], y_pred_bin[:, i])
+        roc_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, label=f'ROC класс {i} (AUC = {roc_auc:.2f})')
+    
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(title)
+    plt.legend(loc="lower right", fontsize='small')
+    plt.grid(True)
+    plt.show()
+
 def evaluate_clustering(X, kmeans, y_true):
     """
     Оценивает качество кластеризации
@@ -71,6 +153,8 @@ def evaluate_clustering(X, kmeans, y_true):
     - intra_dist: среднее внутрикластерное расстояние
     - inter_dist: среднее межкластерное расстояние
     - conf_matrix: матрица ошибок
+    - metrics: словарь с дополнительными метриками
+    - predicted_labels: предсказанные метки после отображения кластеров на классы
     """
     # Вычисляем внутрикластерное расстояние
     intra_dist = kmeans.inertia_ / X.shape[0]
@@ -87,11 +171,17 @@ def evaluate_clustering(X, kmeans, y_true):
             inter_distances.append(dist)
     inter_dist = np.mean(inter_distances)
     
-    # Вычисляем матрицу ошибок
-    y_pred = kmeans.labels_
-    conf_matrix = confusion_matrix(y_true, y_pred)
+    # Получаем метки кластеров и отображаем их на реальные классы
+    cluster_labels = kmeans.labels_
+    predicted_labels = map_clusters_to_labels(cluster_labels, y_true)
     
-    return intra_dist, inter_dist, conf_matrix
+    # Вычисляем матрицу ошибок
+    conf_matrix = confusion_matrix(y_true, predicted_labels)
+    
+    # Вычисляем дополнительные метрики
+    metrics = calculate_metrics(y_true, predicted_labels)
+    
+    return intra_dist, inter_dist, conf_matrix, metrics, predicted_labels
 
 def plot_results(digits, kmeans, feature_type):
     """
@@ -155,12 +245,22 @@ def main():
         kmeans.fit(features_scaled)
         
         # Оцениваем качество кластеризации
-        intra_dist, inter_dist, conf_matrix = evaluate_clustering(features_scaled, kmeans, y)
+        intra_dist, inter_dist, conf_matrix, metrics, predicted_labels = evaluate_clustering(features_scaled, kmeans, y)
         # !!!! Среднее внутрикластерное расстояние (чем меньше, тем лучше) !!!!!
         print(f"Среднее внутрикластерное расстояние: {intra_dist:.4f}")
-        # !!!! Среднее межкластерное расстояние (чем больше, тем лучше) !!!!!
+                # !!!! Среднее межкластерное расстояние (чем больше, тем лучше) !!!!!
         print(f"Среднее межкластерное расстояние: {inter_dist:.4f}")
+        print(f"\nДополнительные метрики:")
+        print(f"Accuracy: {metrics['accuracy']:.3f}")
+        print(f"Precision: {metrics['precision']:.3f}")
+        print(f"Recall: {metrics['recall']:.3f}")
+        print(f"F1 Score: {metrics['f1']:.3f}")
+        print(f"Ошибка I рода (alpha): {metrics['alpha']:.3f}")
+        print(f"Ошибка II рода (beta): {metrics['beta']:.3f}")
         print("\nМатрица ошибок:")
+        
+        # Строим ROC-кривые
+        plot_roc_curves(y, predicted_labels, f"ROC-кривые для признаков типа {feature_type}")
         fig, ax = plt.subplots(figsize=(8, 6))
         cax = ax.matshow(conf_matrix, cmap=plt.cm.Blues)
         fig.colorbar(cax)
