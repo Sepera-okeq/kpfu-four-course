@@ -24,10 +24,13 @@ def extract_features(images, feature_type='raw'):
     Извлекает признаки из изображений
     Параметры:
     - images: массив изображений
-    - feature_type: тип извлекаемых признаков ('raw', 'histogram')
+    - feature_type: тип извлекаемых признаков ('raw', 'histogram', 'horizontal_proj', 'vertical_proj', 'gradient')
     Возвращает:
     - features: массив признаков
     """
+    # Преобразуем развернутые изображения обратно в матрицы 8x8
+    images_reshaped = images.reshape(-1, 8, 8)
+    
     if feature_type == 'raw':
         # Используем сами пиксели как признаки
         return images
@@ -36,6 +39,26 @@ def extract_features(images, feature_type='raw'):
         features = np.array([np.histogram(img, bins=16, range=(0, 16))[0] 
                            for img in images])
         return features
+    elif feature_type == 'horizontal_proj':
+        # Суммируем значения пикселей по горизонтали
+        features = np.array([np.sum(img_matrix, axis=1) for img_matrix in images_reshaped])
+        return features
+    elif feature_type == 'vertical_proj':
+        # Суммируем значения пикселей по вертикали
+        features = np.array([np.sum(img_matrix, axis=0) for img_matrix in images_reshaped])
+        return features
+    elif feature_type == 'gradient':
+        # Вычисляем градиенты по x и y направлениям
+        features = []
+        for img in images_reshaped:
+            gradient_x = np.gradient(img, axis=1)
+            gradient_y = np.gradient(img, axis=0)
+            # Вычисляем магнитуду градиента
+            magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+            # Усредняем значения магнитуды по 4x4 блокам для уменьшения размерности
+            magnitude_reduced = magnitude.reshape(2, 4, 2, 4).mean(axis=(1,3)).flatten()
+            features.append(magnitude_reduced)
+        return np.array(features)
 
 def evaluate_clustering(X, kmeans, y_true):
     """
@@ -96,7 +119,14 @@ def plot_results(digits, kmeans, feature_type):
             axes[i].set_title(f'Кластер {i}')
         axes[i].axis('off')
     
-    plt.suptitle(f'Средние изображения кластеров\nПризнаки: {feature_type}')
+    feature_descriptions = {
+        'raw': 'исходные пиксели (64 признака)',
+        'histogram': 'гистограмма интенсивности (16 признаков)',
+        'horizontal_proj': 'горизонтальные проекции (8 признаков)',
+        'vertical_proj': 'вертикальные проекции (8 признаков)',
+        'gradient': 'градиентные характеристики (4 признака)'
+    }
+    plt.suptitle(f'Средние изображения кластеров\nПризнаки: {feature_descriptions[feature_type]}')
     plt.tight_layout()
     plt.show()
 
@@ -108,8 +138,7 @@ def main():
     digits, X, y = load_data()
     
     # Список типов признаков для сравнения
-    # 64 признака //// 16 бинов (= 16 признаков)
-    feature_types = ['raw', 'histogram']
+    feature_types = ['raw', 'histogram', 'horizontal_proj', 'vertical_proj', 'gradient']
     
     for feature_type in feature_types:
         print(f"\nИспользуем признаки типа: {feature_type}")
