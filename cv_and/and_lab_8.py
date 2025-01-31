@@ -77,7 +77,7 @@ def prepare_data():
     digits = load_digits()
     X, y = digits.data, digits.target
     
-    # Нормализация данных
+    # Нормализация данных (приводим данные к нулевому среднему и единичной дисперсии)
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
     
@@ -87,6 +87,7 @@ def prepare_data():
     X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
     
     # Преобразование данных в тензоры PyTorch и изменение формы для свёрточной сети
+    # (количество изображений, количество каналов, высота, ширина), а если что 8x8 - размер изображения цифры!!!!
     X_train = torch.FloatTensor(X_train).view(-1, 1, 8, 8)
     X_val = torch.FloatTensor(X_val).view(-1, 1, 8, 8)
     X_test = torch.FloatTensor(X_test).view(-1, 1, 8, 8)
