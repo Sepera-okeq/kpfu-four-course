@@ -248,18 +248,25 @@ def main():
         intra_dist, inter_dist, conf_matrix, metrics, predicted_labels = evaluate_clustering(features_scaled, kmeans, y)
         # !!!! Среднее внутрикластерное расстояние (чем меньше, тем лучше) !!!!!
         print(f"Среднее внутрикластерное расстояние: {intra_dist:.4f}")
-                # !!!! Среднее межкластерное расстояние (чем больше, тем лучше) !!!!!
+        # !!!! Среднее межкластерное расстояние (чем больше, тем лучше) !!!!!
         print(f"Среднее межкластерное расстояние: {inter_dist:.4f}")
         print(f"\nДополнительные метрики:")
+        # Доля правильно классифицированных образцов.
         print(f"Accuracy: {metrics['accuracy']:.3f}")
+        # Точность (из всех образцов, предсказанных как принадлежащих к классу, какая доля действительно принадлежит этому классу)!!!!
         print(f"Precision: {metrics['precision']:.3f}")
+        # Полнота (из всех образцов, принадлежащих к классу, какая доля была правильно классифицирована)!!!
         print(f"Recall: {metrics['recall']:.3f}")
+        # Гармоническое среднее precision и recall.
         print(f"F1 Score: {metrics['f1']:.3f}")
+        # Ошибка I рода (false positive rate) - доля образцов, не принадлежащих к классу, но классифицированных как принадлежащие.
         print(f"Ошибка I рода (alpha): {metrics['alpha']:.3f}")
+        # Ошибка II рода (false negative rate) - доля образцов, принадлежащих к классу, но классифицированных как не принадлежащие.
         print(f"Ошибка II рода (beta): {metrics['beta']:.3f}")
-        print("\nМатрица ошибок:")
         
-        # Строим ROC-кривые
+        # Строим ROC-кривые (Receiver Operating Characteristic) для каждого класса. 
+        # ROC-кривая показывает зависимость между True Positive Rate (TPR) и False Positive Rate (FPR) при изменении порога классификации.
+        # Площадь под ROC-кривой (AUC - Area Under the Curve) является показателем качества классификации: чем ближе AUC к 1, тем лучше.
         plot_roc_curves(y, predicted_labels, f"ROC-кривые для признаков типа {feature_type}")
         fig, ax = plt.subplots(figsize=(8, 6))
         cax = ax.matshow(conf_matrix, cmap=plt.cm.Blues)
