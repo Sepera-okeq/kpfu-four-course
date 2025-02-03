@@ -1,5 +1,22 @@
 #define _CRT_SECURE_NO_WARNINGS
 
+/*
+ * Параллельный конвейер с использованием MPI
+ * 
+ * Программа реализует параллельный конвейер обработки данных с использованием MPI.
+ * Архитектура конвейера состоит из следующих компонентов:
+ * 1. Генератор (ранг 0) - создает последовательность чисел для обработки
+ * 2. Работники (ранги 1..N-1) - выполняют функции обработки данных (Ф1, Ф2, Ф3)
+ * 3. Коллектор (последний ранг) - собирает результаты и вычисляет итоговую сумму
+ * 
+ * Особенности реализации:
+ * - Использует MPI для межпроцессного взаимодействия
+ * - Каждая функция конвейера может выполняться на нескольких процессах
+ * - Измерение времени выполнения с помощью MPI_Wtime
+ * - Логирование действий с временными метками
+ * - Обработка сигналов завершения для корректного завершения работы
+ */
+
 #include <mpi.h>
 #include <iostream>
 #include <vector>
@@ -12,93 +29,104 @@
 #include <thread>
 #include <mutex>
 
+// Мьютекс для синхронизации вывода в консоль
 std::mutex cout_mutex;
 
+// Функция для получения форматированного времени с использованием chrono
 std::string get_formatted_time() {
     auto now = std::chrono::system_clock::now();
-    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    auto time_point = std::chrono::system_clock::to_time_t(now);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
-
+    
+    std::tm local_tm;
+    localtime_s(&local_tm, &time_point);
+    
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S:");
-    ss << "-" << std::setfill('0') << std::setw(3) << ms.count();
+    ss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+    ss << "." << std::setfill('0') << std::setw(3) << ms.count();
     return ss.str();
 }
 
-// Безопасный вывод в консоль с временной меткой
+// Безопасный вывод в консоль с временной меткой используя mutex для синхронизации
 template<typename T>
 void safe_cout(T message) {
     std::lock_guard<std::mutex> lock(cout_mutex);
     std::cout << "[" << get_formatted_time() << "] " << message << std::endl;
 }
 
-// Форматирование времени выполнения
-std::string format_duration(std::chrono::microseconds duration) {
-    auto microseconds = duration.count();
-    return std::to_string(microseconds) + "μs";
+// Форматирование времени выполнения в микросекундах
+std::string format_duration(double duration) {
+    return std::to_string(static_cast<long long>(duration * 1e6)) + "мкс";
 }
 
+// Теги для MPI сообщений
 enum Tags {
-    DATA_TAG = 1,
-    TERMINATION_TAG = 2
+    DATA_TAG = 1,        // Тег для передачи данных
+    TERMINATION_TAG = 2  // Тег для сигнала завершения
 };
 
+// Структура сообщения для передачи данных между процессами
 struct DataMessage {
-    int value;
-    int source;
-    bool is_termination;
-    long long timestamp;  // Добавляем временную метку
+    int value;              // Значение для обработки
+    int source;             // Исходный процесс
+    bool is_termination;    // Флаг завершения
+    double timestamp;       // Временная метка (используется MPI_Wtime)
 
     DataMessage() : value(0), source(0), is_termination(false),
-        timestamp(std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()) {}
+        timestamp(MPI_Wtime()) {}
 };
 
+// Базовый абстрактный класс для функций конвейера
 class PipelineFunction {
 public:
-    virtual int process(int input) = 0;
-    virtual std::string getName() const = 0;
+    virtual int process(int input) = 0;              // Метод обработки входных данных
+    virtual std::string getName() const = 0;         // Получение имени функции
     virtual ~PipelineFunction() = default;
 };
 
+// Первая функция конвейера: увеличивает значение на 1
 class F1 : public PipelineFunction {
 public:
     int process(int input) override {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Имитация работы
+        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Имитация сложных вычислений
         return input + 1;
     }
-    std::string getName() const override { return "F1 (increment)"; }
+    std::string getName() const override { return "Ф1 (инкремент)"; }
 };
 
+// Вторая функция конвейера: возводит число в квадрат
 class F2 : public PipelineFunction {
 public:
     int process(int input) override {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Имитация работы
+        std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Имитация сложных вычислений
         return input * input;
     }
-    std::string getName() const override { return "F2 (square)"; }
+    std::string getName() const override { return "Ф2 (квадрат)"; }
 };
 
+// Третья функция конвейера: возвращает значение без изменений
 class F3 : public PipelineFunction {
 public:
     int process(int input) override {
-        std::this_thread::sleep_for(std::chrono::milliseconds(150)); // Имитация работы
+        std::this_thread::sleep_for(std::chrono::milliseconds(150)); // Имитация сложных вычислений
         return input;
     }
-    std::string getName() const override { return "F3 (identity)"; }
+    std::string getName() const override { return "Ф3 (идентичность)"; }
 };
 
+// Класс для генерации последовательности чисел
 class Generator {
 private:
-    int count;
-    int start_value;
-    int step;
+    int count;          // Количество генерируемых чисел
+    int start_value;    // Начальное значение
+    int step;           // Шаг между числами
 
 public:
     Generator(int count = 3, int start = 0, int step = 1)
         : count(count), start_value(start), step(step) {}
 
+    // Генерация последовательности чисел
     std::vector<int> generate() {
         std::vector<int> result;
         for (int i = 0; i < count; ++i) {
@@ -108,39 +136,44 @@ public:
     }
 };
 
+// Структура конфигурации конвейера
 struct PipelineConfig {
-    std::vector<std::shared_ptr<PipelineFunction>> functions;
-    std::vector<int> proc_per_func;
-    bool use_reduction;
-    int generator_count;
-    int generator_start;
-    int generator_step;
+    std::vector<std::shared_ptr<PipelineFunction>> functions;  // Список функций конвейера
+    std::vector<int> proc_per_func;                           // Количество процессов на каждую функцию
+    bool use_reduction;                                       // Флаг использования редукции
+    int generator_count;                                      // Количество генерируемых чисел
+    int generator_start;                                      // Начальное значение для генератора
+    int generator_step;                                       // Шаг генератора
 
     PipelineConfig() : generator_count(3), generator_start(0), generator_step(1) {}
 };
 
+// Основной класс конвейера
 class Pipeline {
 private:
-    int rank;
-    int total_procs;
-    PipelineConfig config;
-    std::vector<std::pair<int, int>> rank_ranges;
-    std::chrono::system_clock::time_point start_time;
+    int rank;                                           // Ранг текущего процесса
+    int total_procs;                                    // Общее количество процессов
+    PipelineConfig config;                             // Конфигурация конвейера
+    std::vector<std::pair<int, int>> rank_ranges;      // Диапазоны рангов для каждой функции
+    double start_time;                                  // Время начала работы (MPI_Wtime)
 
+    // Получение прошедшего времени в миллисекундах
     std::string getElapsedTime() {
-        auto now = std::chrono::system_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
-        return std::to_string(duration.count()) + "ms";
+        double current_time = MPI_Wtime();
+        double elapsed = (current_time - start_time) * 1000;  // Конвертация в миллисекунды
+        return std::to_string(static_cast<int>(elapsed)) + "мс";
     }
 
+    // Логирование сообщений с информацией о процессе и времени
     void log(const std::string& message) {
         std::stringstream ss;
-        ss << "[Process " << std::setw(2) << rank << " | " << getElapsedTime() << "] " << message;
+        ss << "[Процесс " << std::setw(2) << rank << " | " << getElapsedTime() << "] " << message;
         safe_cout(ss.str());
     }
 
+    // Настройка диапазонов рангов для каждой функции конвейера
     void setupRankRanges() {
-        int current_rank = 1;
+        int current_rank = 1;  // Начинаем с 1, так как 0 - генератор
         for (size_t i = 0; i < config.proc_per_func.size(); ++i) {
             rank_ranges.push_back({ current_rank, current_rank + config.proc_per_func[i] - 1 });
             current_rank += config.proc_per_func[i];
@@ -148,19 +181,18 @@ private:
     }
 
     void processMessage(const DataMessage& msg, int stage, int next_rank) {
-        auto start_process = std::chrono::high_resolution_clock::now();
+        auto start_process = MPI_Wtime();
 
         if (!msg.is_termination) {
             int result = config.functions[stage]->process(msg.value);
 
-            auto end_process = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
-                end_process - start_process);
+            auto end_process = MPI_Wtime();
+            auto duration = end_process - start_process;
 
-            log("Function " + config.functions[stage]->getName() +
-                " processed value " + std::to_string(msg.value) +
+            log("Функция " + config.functions[stage]->getName() +
+                " обработала значение " + std::to_string(msg.value) +
                 " -> " + std::to_string(result) +
-                " (took " + format_duration(duration) + ")");
+                " (заняло " + format_duration(duration) + ")");
 
             // Проверяем, что процесс-получатель все еще активен
             MPI_Status status;
@@ -186,9 +218,10 @@ private:
     }
 
 public:
+    // Конструктор конвейера
     Pipeline(int rank, int total_procs, const PipelineConfig& config)
         : rank(rank), total_procs(total_procs), config(config) {
-        start_time = std::chrono::system_clock::now();
+        start_time = MPI_Wtime();  // Засекаем время начала работы
         setupRankRanges();
     }
 
@@ -215,11 +248,11 @@ private:
         }
 
         if (stage == -1) {
-            log("Worker initialized with invalid stage. Exiting.");
+            log("Работник инициализирован с неверным этапом. Завершение.");
             return;
         }
 
-        log("Started worker for stage " + std::to_string(stage) +
+        log("Запущен работник для этапа " + std::to_string(stage) +
             " (" + config.functions[stage]->getName() + ")");
 
         bool continue_working = true;
@@ -273,16 +306,15 @@ private:
             }
 
             // Обработка обычного сообщения
-            auto start_process = std::chrono::high_resolution_clock::now();
+            auto start_process = MPI_Wtime();
             int result = config.functions[stage]->process(msg.value);
-            auto end_process = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
-                end_process - start_process);
+            auto end_process = MPI_Wtime();
+            auto duration = end_process - start_process;
 
-            log("Function " + config.functions[stage]->getName() +
-                " processed value " + std::to_string(msg.value) +
+            log("Функция " + config.functions[stage]->getName() +
+                " обработала значение " + std::to_string(msg.value) +
                 " -> " + std::to_string(result) +
-                " (took " + format_duration(duration) + ")");
+                " (заняло " + format_duration(duration) + ")");
 
             DataMessage output{};
             output.value = result;
@@ -304,16 +336,16 @@ private:
             processed_count++;
         }
 
-        log("Worker finished");
+        log("Работник завершил работу");
     }
 
     void runGenerator() {
-        log("Generator starting...");
+        log("Генератор запускается...");
 
         Generator gen(config.generator_count, config.generator_start, config.generator_step);
         auto data = gen.generate();
 
-        log("Generated " + std::to_string(data.size()) + " values");
+        log("Сгенерировано " + std::to_string(data.size()) + " значений");
 
         int current_worker = rank_ranges[0].first;
         for (int value : data) {
@@ -322,8 +354,8 @@ private:
             msg.source = rank;
             msg.is_termination = false;
 
-            log("Sending value " + std::to_string(value) +
-                " to worker " + std::to_string(current_worker));
+            log("Отправка значения " + std::to_string(value) +
+                " работнику " + std::to_string(current_worker));
 
             MPI_Send(&msg, sizeof(DataMessage), MPI_BYTE,
                 current_worker, DATA_TAG, MPI_COMM_WORLD);
@@ -344,16 +376,16 @@ private:
         termination.is_termination = true;
 
         for (int i = rank_ranges[0].first; i <= rank_ranges[0].second; ++i) {
-            log("Sending termination signal to worker " + std::to_string(i));
+            log("Отправка сигнала завершения работнику " + std::to_string(i));
             MPI_Send(&termination, sizeof(DataMessage), MPI_BYTE,
                 i, DATA_TAG, MPI_COMM_WORLD);
         }
 
-        log("Generator finished");
+        log("Генератор завершил работу");
     }
 
     void runCollector() {
-        log("Collector starting");
+        log("Коллектор запускается");
 
         int received = 0;
         int sum = 0;
@@ -370,48 +402,54 @@ private:
 
             if (msg.is_termination) {
                 termination_signals++;
-                log("Received termination signal (" +
+                log("Получен сигнал завершения (" +
                     std::to_string(termination_signals) + "/" +
                     std::to_string(expected_termination) + ")");
             }
             else {
                 sum += msg.value;
                 received++;
-                log("Received value: " + std::to_string(msg.value) +
-                    ", Current sum: " + std::to_string(sum));
+                log("Получено значение: " + std::to_string(msg.value) +
+                    ", Текущая сумма: " + std::to_string(sum));
             }
         }
 
-        log("Final result: " + std::to_string(sum));
+        log("Финальный результат: " + std::to_string(sum));
     }
 };
 
+// Основная функция программы
 int main(int argc, char** argv) {
+    // Инициализация MPI
     MPI_Init(&argc, &argv);
 
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    // Настройка конфигурации конвейера
     PipelineConfig config;
-    config.proc_per_func = { 1, 1, 1 };
+    config.proc_per_func = { 1, 1, 1 };  // По одному процессу на каждую функцию
     config.use_reduction = true;
-    config.generator_count = 3;
-    config.generator_start = 0;
-    config.generator_step = 1;
+    config.generator_count = 3;           // Генерировать 3 числа
+    config.generator_start = 0;           // Начать с 0
+    config.generator_step = 1;            // Шаг 1
 
+    // Добавление функций в конвейер
     config.functions.push_back(std::make_shared<F1>());
     config.functions.push_back(std::make_shared<F2>());
     config.functions.push_back(std::make_shared<F3>());
 
     try {
+        // Создание и запуск конвейера
         Pipeline pipeline(rank, size, config);
         pipeline.run();
     }
     catch (const std::exception& e) {
-        std::cerr << "Error in process " << rank << ": " << e.what() << std::endl;
+        std::cerr << "Ошибка в процессе " << rank << ": " << e.what() << std::endl;
     }
 
+    // Завершение работы MPI
     MPI_Finalize();
     return 0;
 }
