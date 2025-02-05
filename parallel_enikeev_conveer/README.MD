@@ -17,14 +17,14 @@ graph TD
     W3 --> C[Коллектор<br/>Последний ранг]
     W3_2 --> C
 
-    style G fill:#f9f,stroke:#333,stroke-width:2px
-    style C fill:#9ff,stroke:#333,stroke-width:2px
-    style W1 fill:#ff9,stroke:#333,stroke-width:2px
-    style W1_2 fill:#ff9,stroke:#333,stroke-width:2px
-    style W2 fill:#f99,stroke:#333,stroke-width:2px
-    style W2_2 fill:#f99,stroke:#333,stroke-width:2px
-    style W3 fill:#9f9,stroke:#333,stroke-width:2px
-    style W3_2 fill:#9f9,stroke:#333,stroke-width:2px
+    style G fill:#f9f,stroke:#000000,stroke-width:2px
+    style C fill:#9ff,stroke:#000000,stroke-width:2px
+    style W1 fill:#ff9,stroke:#000000,stroke-width:2px
+    style W1_2 fill:#ff9,stroke:#000000,stroke-width:2px
+    style W2 fill:#f99,stroke:#000000,stroke-width:2px
+    style W2_2 fill:#f99,stroke:#000000,stroke-width:2px
+    style W3 fill:#9f9,stroke:#000000,stroke-width:2px
+    style W3_2 fill:#9f9,stroke:#000000,stroke-width:2px
 ```
 
 ## Компоненты системы
